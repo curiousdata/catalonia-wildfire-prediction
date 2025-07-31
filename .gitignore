@@ -1,0 +1,27 @@
+# Python virtual environment
+venv/
+.env/
+
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs and debug files
+*.log
+*.out
+*.err
+
+# IDE-specific files
+.vscode/
+.idea/
+*.swp
+
+# OS-specific files
+.DS_Store
+Thumbs.db
