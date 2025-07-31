@@ -2,6 +2,10 @@
 venv/
 .env/
 
+# Do not track large local datasets
+data/IberFire.nc
+*.nc
+
 # Byte-compiled files
 __pycache__/
 *.py[cod]
