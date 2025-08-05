@@ -9,8 +9,8 @@ from sklearn.metrics import mean_squared_error
 data = pd.read_csv("data/IberFire_demo.csv")
 
 # Split into features and target
-X = data.drop(columns=["target"])  # Replace "target" with your target column name
-y = data["target"]
+X = data.drop(columns=["is_fire"])  
+y = data["is_fire"]
 
 # Train-test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
