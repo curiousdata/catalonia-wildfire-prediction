@@ -71,7 +71,8 @@ with mlflow.start_run():
         n_estimators=100,
         max_depth=5,
         learning_rate=0.1,
-        random_state=42
+        random_state=42,
+        objective='binary:logistic',  # Use binary logistic regression for binary classification
     )
 
     # Train the model
@@ -80,7 +81,7 @@ with mlflow.start_run():
 
     # Make predictions
     logger.info("Making predictions on the test set...")
-    y_pred = model.predict(X_test)
+    y_pred = model.predict__proba(X_test)[:, 1]  # Get probabilities for the positive class
 
     # Calculate metrics
     logger.info("Calculating metrics...")
