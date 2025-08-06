@@ -1,0 +1,6 @@
+fastapi
+pandas
+uvicorn
+mlflow
+typing
+xgboost
