@@ -3,7 +3,7 @@ import xgboost as xgb
 import mlflow
 import mlflow.xgboost
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, log_loss
 import logging
 import os
 import time
@@ -84,10 +84,24 @@ with mlflow.start_run():
 
     # Calculate metrics
     logger.info("Calculating metrics...")
-    mse = mean_squared_error(y_test, y_pred)
-    print(f"Mean Squared Error: {mse}")
+    accuracy = accuracy_score(y_test, y_pred.round())
+    precision = precision_score(y_test, y_pred.round(), zero_division=0)
+    recall = recall_score(y_test, y_pred.round(), zero_division=0)
+    f1 = f1_score(y_test, y_pred.round(), zero_division=0)
+    roc_auc = roc_auc_score(y_test, y_pred)
+    logloss = log_loss(y_test, y_pred)
+    logger.info("Metrics calculated successfully.")
+    # Log metrics to MLflow
+    mlflow.log_metric("accuracy", accuracy)
+    mlflow.log_metric("precision", precision)
+    mlflow.log_metric("recall", recall)
+    mlflow.log_metric("f1_score", f1)
+    mlflow.log_metric("roc_auc", roc_auc)
+    mlflow.log_metric("log_loss", logloss)
+    # Log the model
+    mlflow.xgboost.log_model(model, "model")
+    logger.info("Model logged to MLflow.")
+# Save the model locally
+model.save_model("model/IberFire_demo_model.json")
 
-    # Log the metric manually (optional, since autologging already logs it)
-    mlflow.log_metric("mse", mse)
-
-logger.info("Training completed successfully. MSE: %f", mse)
+logger.info("Training completed successfully. Model saved and logged to MLflow.")
