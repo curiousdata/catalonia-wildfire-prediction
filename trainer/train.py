@@ -54,10 +54,14 @@ logger.info(f"Number of infinite values in y_train: {y_train.isin([float('inf'),
 logger.info(f"Maximum value in y_train: {y_train.max()}")
 logger.info(f"Minimum value in y_train: {y_train.min()}")
 # Drop rows with NaN or infinite values in y_train
-logger.info("Dropping rows with invalid values in y_train...")
+logger.info("Dropping rows with invalid values in y_train and test...")
 valid_indices = y_train.notna() & ~y_train.isin([float('inf'), float('-inf')])
 X_train = X_train[valid_indices]
 y_train = y_train[valid_indices]
+
+valid_indices_test = y_test.notna() & ~y_test.isin([float('inf'), float('-inf')])
+X_test = X_test[valid_indices_test]
+y_test = y_test[valid_indices_test]
 
 # Start an MLflow run
 with mlflow.start_run():
