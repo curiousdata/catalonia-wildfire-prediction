@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import logging
 import os
+import time
 from datetime import datetime
 
 # Create a logs directory if it doesn't exist
@@ -44,6 +45,19 @@ mlflow.set_tracking_uri("http://localhost:5001")  # Ensure it points to the runn
 mlflow.set_experiment("IberFire_Demo_Experiment")
 mlflow.xgboost.autolog()
 logger.info("MLflow autologging enabled.")
+
+time.sleep(1)
+
+logger.info("Checking for invalid values in y_train...")
+logger.info(f"Number of NaN values in y_train: {y_train.isna().sum()}")
+logger.info(f"Number of infinite values in y_train: {y_train.isin([float('inf'), float('-inf')]).sum()}")
+logger.info(f"Maximum value in y_train: {y_train.max()}")
+logger.info(f"Minimum value in y_train: {y_train.min()}")
+# Drop rows with NaN or infinite values in y_train
+logger.info("Dropping rows with invalid values in y_train...")
+valid_indices = y_train.notna() & ~y_train.isin([float('inf'), float('-inf')])
+X_train = X_train[valid_indices]
+y_train = y_train[valid_indices]
 
 # Start an MLflow run
 with mlflow.start_run():
