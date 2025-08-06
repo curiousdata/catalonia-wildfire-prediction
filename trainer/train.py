@@ -8,6 +8,8 @@ import logging
 import os
 import time
 from datetime import datetime
+from mlflow.models.signature import infer_signature
+
 
 # Create a logs directory if it doesn't exist
 os.makedirs("logs", exist_ok=True)
@@ -36,6 +38,9 @@ logger.info("Starting the training process...")
 # Split into features and target
 X = data.drop(columns=["is_fire"])  
 y = data["is_fire"]
+for col in X.columns:
+    if X[col].dtype == "int":
+        X[col] = X[col].astype("float64") 
 
 logger.info("Dataset loaded successfully with shape: %s", data.shape)
 
@@ -47,8 +52,6 @@ mlflow.set_tracking_uri("http://localhost:5001")  # Ensure it points to the runn
 mlflow.set_experiment("IberFire_Demo_Experiment")
 mlflow.xgboost.autolog()
 logger.info("MLflow autologging enabled.")
-
-time.sleep(1)
 
 logger.info("Checking for invalid values in y_train...")
 logger.info(f"Number of NaN values in y_train: {y_train.isna().sum()}")
@@ -86,6 +89,10 @@ with mlflow.start_run():
     y_pred = model.predict(X_test)
     y_pred_proba = model.predict_proba(X_test)[:, 1]  # Get probabilities for the positive class
 
+    # Create an input example for the model
+    input_example = X_test.iloc[:1]
+    signature = infer_signature(X_train, model.predict_proba(X_train))
+
     # Calculate metrics
     logger.info("Calculating metrics...")
     accuracy = accuracy_score(y_test, y_pred)
@@ -95,6 +102,7 @@ with mlflow.start_run():
     roc_auc = roc_auc_score(y_test, y_pred_proba)
     logloss = log_loss(y_test, y_pred_proba)
     logger.info("Metrics calculated successfully.")
+
     # Log metrics to MLflow
     mlflow.log_metric("accuracy", accuracy)
     mlflow.log_metric("precision", precision)
@@ -102,10 +110,17 @@ with mlflow.start_run():
     mlflow.log_metric("f1_score", f1)
     mlflow.log_metric("roc_auc", roc_auc)
     mlflow.log_metric("log_loss", logloss)
+
     # Log the model
     logger.info("Logging the model to MLflow...")
-    mlflow.xgboost.log_model(model, "model")
+    mlflow.xgboost.log_model(
+        model, 
+        name= = "IberFire_demo_model", 
+        input_example=input_example, 
+        signature=signature)
+    
 # Save the model locally
-model.save_model("model/IberFire_demo_model.json")
+model.save_model("model/IberFire_demo_model.ubj")
+logger.info("Model saved locally to model/IberFire_demo_model.ubj")
 
-logger.info("Training completed successfully. Model saved and logged to MLflow.")
+logger.info("Process completed.")
