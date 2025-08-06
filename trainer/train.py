@@ -11,6 +11,8 @@ from datetime import datetime
 
 # Create a logs directory if it doesn't exist
 os.makedirs("logs", exist_ok=True)
+# Create a model directory if it doesn't exist
+os.makedirs("model", exist_ok=True)
 
 # Configure logging
 log_filename = f"logs/training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -67,12 +69,12 @@ y_test = y_test[valid_indices_test]
 with mlflow.start_run():
     # Define the XGBoost model
     logger.info("Defining the XGBoost model...")
-    model = xgb.XGBRegressor(
-        n_estimators=100,
-        max_depth=5,
-        learning_rate=0.1,
+    model = xgb.XGBClassifier(
+        objective="binary:logistic",
+        eval_metric="logloss",
+        use_label_encoder=False,
         random_state=42,
-        objective='binary:logistic',  # Use binary logistic regression for binary classification
+        n_jobs=-1
     )
 
     # Train the model
@@ -81,16 +83,17 @@ with mlflow.start_run():
 
     # Make predictions
     logger.info("Making predictions on the test set...")
-    y_pred = model.predict__proba(X_test)[:, 1]  # Get probabilities for the positive class
+    y_pred = model.predict(X_test)
+    y_pred_proba = model.predict_proba(X_test)[:, 1]  # Get probabilities for the positive class
 
     # Calculate metrics
     logger.info("Calculating metrics...")
-    accuracy = accuracy_score(y_test, y_pred.round())
-    precision = precision_score(y_test, y_pred.round(), zero_division=0)
-    recall = recall_score(y_test, y_pred.round(), zero_division=0)
-    f1 = f1_score(y_test, y_pred.round(), zero_division=0)
-    roc_auc = roc_auc_score(y_test, y_pred)
-    logloss = log_loss(y_test, y_pred)
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    roc_auc = roc_auc_score(y_test, y_pred_proba)
+    logloss = log_loss(y_test, y_pred_proba)
     logger.info("Metrics calculated successfully.")
     # Log metrics to MLflow
     mlflow.log_metric("accuracy", accuracy)
@@ -100,8 +103,8 @@ with mlflow.start_run():
     mlflow.log_metric("roc_auc", roc_auc)
     mlflow.log_metric("log_loss", logloss)
     # Log the model
+    logger.info("Logging the model to MLflow...")
     mlflow.xgboost.log_model(model, "model")
-    logger.info("Model logged to MLflow.")
 # Save the model locally
 model.save_model("model/IberFire_demo_model.json")
 
