@@ -4,13 +4,35 @@ import mlflow
 import mlflow.xgboost
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+import logging
+import os
+from datetime import datetime
 
+# Create a logs directory if it doesn't exist
+os.makedirs("logs", exist_ok=True)
+
+# Configure logging
+log_filename = f"logs/training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(log_filename),  # Save logs to a file
+        logging.StreamHandler()  # Print logs to the console
+    ]
+)
+
+logger = logging.getLogger(__name__)
+# Log the start of the training process
+logger.info("Starting the training process...")
 # Load the dataset
 data = pd.read_csv("data/IberFire_demo.csv")
 
 # Split into features and target
 X = data.drop(columns=["is_fire"])  
 y = data["is_fire"]
+
+logger.info("Dataset loaded successfully with shape: %s", data.shape)
 
 # Train-test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -19,10 +41,12 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 mlflow.set_tracking_uri("http://localhost:5001")  # Ensure it points to the running MLflow server
 mlflow.set_experiment("IberFire_Demo_Experiment")
 mlflow.xgboost.autolog()
+logger.info("MLflow autologging enabled.")
 
 # Start an MLflow run
 with mlflow.start_run():
     # Define the XGBoost model
+    logger.info("Defining the XGBoost model...")
     model = xgb.XGBRegressor(
         n_estimators=100,
         max_depth=5,
@@ -31,14 +55,19 @@ with mlflow.start_run():
     )
 
     # Train the model
+    logger.info("Training the model...")
     model.fit(X_train, y_train)
 
     # Make predictions
+    logger.info("Making predictions on the test set...")
     y_pred = model.predict(X_test)
 
     # Calculate metrics
+    logger.info("Calculating metrics...")
     mse = mean_squared_error(y_test, y_pred)
     print(f"Mean Squared Error: {mse}")
 
     # Log the metric manually (optional, since autologging already logs it)
     mlflow.log_metric("mse", mse)
+
+logger.info("Training completed successfully. MSE: %f", mse)
