@@ -16,6 +16,8 @@ y = data["is_fire"]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Enable MLflow autologging
+mlflow.set_tracking_uri("http://localhost:5001")  # Ensure it points to the running MLflow server
+mlflow.set_experiment("IberFire_Demo_Experiment")
 mlflow.xgboost.autolog()
 
 # Start an MLflow run
