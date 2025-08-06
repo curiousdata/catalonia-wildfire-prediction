@@ -7,3 +7,13 @@ services:
     volumes:
       - ./mlruns:/mlflow/mlruns
     command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri file:/mlflow/mlruns
+
+  streamlit-dashboard:
+    build:
+      context: ./frontend
+    container_name: streamlit-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
