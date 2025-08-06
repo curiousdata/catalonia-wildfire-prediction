@@ -38,9 +38,10 @@ logger.info("Starting the training process...")
 # Split into features and target
 X = data.drop(columns=["is_fire"])  
 y = data["is_fire"]
-for col in X.columns:
-    if X[col].dtype == "int":
-        X[col] = X[col].astype("float64") 
+
+X = X.astype({
+    col: 'float64' for col in X.select_dtypes(include=['float32', 'int']).columns
+})  # Convert int and float32 to float64 for compatibility with XGBoost
 
 logger.info("Dataset loaded successfully with shape: %s", data.shape)
 
@@ -75,7 +76,6 @@ with mlflow.start_run():
     model = xgb.XGBClassifier(
         objective="binary:logistic",
         eval_metric="logloss",
-        use_label_encoder=False,
         random_state=42,
         n_jobs=-1
     )
@@ -115,7 +115,7 @@ with mlflow.start_run():
     logger.info("Logging the model to MLflow...")
     mlflow.xgboost.log_model(
         model, 
-        name= = "IberFire_demo_model", 
+        name = "IberFire_demo_model", 
         input_example=input_example, 
         signature=signature)
     
