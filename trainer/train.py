@@ -24,9 +24,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 # Log the start of the training process
-logger.info("Starting the training process...")
 # Load the dataset
-data = pd.read_csv("data/IberFire_demo.csv")
+logger.info("Loading the dataset...")
+data = pd.read_parquet("data/IberFire_demo.parquet")
+
+logger.info("Starting the training process...")
 
 # Split into features and target
 X = data.drop(columns=["is_fire"])  
