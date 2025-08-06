@@ -30,3 +30,4 @@ dist/
 .DS_Store
 Thumbs.db
 data/IberFire_demo.csv
+data/IberFire_demo.parquet
