@@ -3,53 +3,66 @@ import pandas as pd
 import requests
 import folium
 from streamlit_folium import st_folium
+from folium.plugins import HeatMap
+from pyproj import Transformer
 
-# Streamlit app title
+# Set up transformer
+transformer = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
+
+# Title
 st.title("Catalonia Wildfire Risk Dashboard")
 
-# Date input
-year = st.selectbox("Select Year", [2019, 2020, 2021])
+# Date selection
+year = st.selectbox("Select Year", [2021, 2022, 2023])
 month = st.selectbox("Select Month", list(range(1, 13)))
 day = st.selectbox("Select Day", list(range(1, 32)))
 
-
-
-# Example coordinates for Catalonia (replace with actual grid points)
-latitudes = [41.5, 41.6, 41.7]
-longitudes = [1.5, 1.6, 1.7]
-
-# Generate heatmap
+# Trigger
 if st.button("Generate Heatmap"):
-    # Call the backend API to fetch predictions
     try:
+        # Call API
         response = requests.get(
-            "http://backend-service:8000/predict", 
-            params={"year": year, "month": month, "day": day,
-                     "latitudes": latitudes, "longitudes": longitudes}
+            "http://backend-service:8000/predict",
+            params={"year": year, "month": month, "day": day}
         )
         response.raise_for_status()
         data = response.json()
 
-        # Create a DataFrame for predictions
-        predictions = pd.DataFrame({
-            "latitude": latitudes,
-            "longitude": longitudes,
-            "risk": data["predictions"]
-        })
+        # Convert to DataFrame
+        predictions = pd.DataFrame(data)
 
-        # Create a folium map
-        m = folium.Map(location=[41.5, 1.5], zoom_start=8)
-        for _, row in predictions.iterrows():
-            folium.Circle(
-                location=[row["latitude"], row["longitude"]],
-                radius=500,
-                color="red" if row["risk"] > 0.5 else "green",
-                fill=True,
-                fill_opacity=0.6
-            ).add_to(m)
+        # Transform coordinates EPSG:3035 -> WGS84
+        x_vals = predictions["x"].values
+        y_vals = predictions["y"].values
+        lon_vals, lat_vals = transformer.transform(x_vals, y_vals)
 
-        # Display the map
+        predictions["longitude"] = lon_vals
+        predictions["latitude"] = lat_vals
+
+        # Drop rows with invalid coordinates
+        predictions.dropna(subset=["latitude", "longitude", "risk"], inplace=True)
+
+        # Prepare heatmap data
+        heat_data = predictions[["latitude", "longitude", "risk"]].values.tolist()
+
+        # Center map
+        map_center = [predictions["latitude"].mean(), predictions["longitude"].mean()]
+        m = folium.Map(location=map_center, zoom_start=8)
+
+        # Add HeatMap
+        HeatMap(
+            data=heat_data,
+            radius=8,
+            blur=12,
+            min_opacity=0.4,
+            max_zoom=12
+        ).add_to(m)
+
+        # Show map
+        st.success(f"{len(heat_data)} prediction points loaded.")
         st_folium(m, width=700, height=500)
 
     except requests.exceptions.RequestException as e:
         st.error(f"Error fetching predictions: {e}")
+    except Exception as ex:
+        st.error(f"Unexpected error: {ex}")
