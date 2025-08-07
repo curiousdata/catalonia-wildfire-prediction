@@ -41,6 +41,9 @@ if st.button("Generate Heatmap"):
 
         # Drop rows with invalid coordinates
         predictions.dropna(subset=["latitude", "longitude", "risk"], inplace=True)
+        predictions = predictions[predictions["risk"] >= 0]
+        if predictions["risk"].max() > 1:
+            predictions["risk"] = predictions["risk"] / predictions["risk"].max()
 
         # Prepare heatmap data
         heat_data = predictions[["latitude", "longitude", "risk"]].values.tolist()
@@ -52,14 +55,14 @@ if st.button("Generate Heatmap"):
         # Add HeatMap
         HeatMap(
             data=heat_data,
-            radius=8,
-            blur=12,
-            min_opacity=0.4,
-            max_zoom=12
+            
         ).add_to(m)
-
+        if len(heat_data) == 0:
+            st.warning("No heatmap data to display.")
+            st.stop()
         # Show map
         st.success(f"{len(heat_data)} prediction points loaded.")
+        st.write("Map successfully generated and ready to render.")
         st_folium(m, width=700, height=500)
 
     except requests.exceptions.RequestException as e:
