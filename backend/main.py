@@ -3,6 +3,8 @@ import pandas as pd
 import mlflow.pyfunc
 from typing import List
 import xgboost as xgb
+import xarray as xr
+from datetime import datetime, time, timedelta
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -13,8 +15,8 @@ model = xgb.XGBClassifier()
 model.load_model(model_path)
 
 # Load demo dataset
-dataset_path = "data/IberFire_demo.parquet"
-data = pd.read_parquet(dataset_path)
+dataset_path = "data/IberFire_demo.nc"
+data = xr.open_dataset(dataset_path)
 
 @app.get("/predict")
 async def predict(year= Query(..., description="Year of the prediction"),
@@ -26,12 +28,12 @@ async def predict(year= Query(..., description="Year of the prediction"),
     Predict wildfire risks for a given date and coordinates.
     """
 
-    # Find entry with the same date
-    if year in data["year"].values and month in data["month"].values and day in data["day"].values:
-        input_data = data[(data["year"] == year) & (data["month"] == month) & (data["day"] == day)]
-    else:
-        year = 2022  # Default to a known year if the date is not found
-        input_data = data[(data["year"] == year) & (data["month"] == month) & (data["day"] == day)]
+    # Find entry with the same date in columns "year", "month", "day"
+    query_date = date(year, month, day).isoformat()
+    date_entry = data.sel(time=query_date)    
+    
+    # Prepare input data
+    input_data = date_entry.to_dataframe().reset_index()
 
     predictions = model.predict_proba(input_data)
 

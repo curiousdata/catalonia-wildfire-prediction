@@ -4,3 +4,7 @@ uvicorn
 mlflow
 typing
 xgboost
+xarray
+netCDF4 
+h5netcdf
+datetime
