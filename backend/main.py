@@ -17,24 +17,23 @@ dataset_path = "data/IberFire_demo.parquet"
 data = pd.read_parquet(dataset_path)
 
 @app.get("/predict")
-async def predict(date: str, latitudes: List[float] = Query(...), longitudes: List[float] = Query(...)):
+async def predict(year= Query(..., description="Year of the prediction"),
+                 month= Query(..., description="Month of the prediction"),
+                 day= Query(..., description="Day of the prediction"),
+                 latitudes: List[float] = Query(..., description="List of latitudes"),
+                 longitudes: List[float] = Query(..., description="List of longitudes")):
     """
     Predict wildfire risks for a given date and coordinates.
     """
-    # TODO: Parse the data string; find the data in the dataset, and infer dataset entry 
-    # based on the date provided through the model.
-    # Create a DataFrame for input features
-    input_data = pd.DataFrame({
-        "latitude": latitudes,
-        "longitude": longitudes,
-        "date": [date] * len(latitudes)
-    })
 
-    # Add any necessary feature engineering here (e.g., extracting day of year)
-    input_data["day_of_year"] = pd.to_datetime(input_data["date"]).dt.dayofyear
+    # Find entry with the same date
+    if year in data["year"].values and month in data["month"].values and day in data["day"].values:
+        input_data = data[(data["year"] == year) & (data["month"] == month) & (data["day"] == day)]
+    else:
+        year = 2022  # Default to a known year if the date is not found
+        input_data = data[(data["year"] == year) & (data["month"] == month) & (data["day"] == day)]
 
-    # Make predictions
-    predictions = model.predict(input_data)
+    predictions = model.predict_proba(input_data)
 
     # Return predictions as a JSON response
-    return {"date": date, "predictions": predictions.tolist()}
+    return {"predictions": predictions.tolist()}
