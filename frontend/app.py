@@ -8,7 +8,11 @@ from streamlit_folium import st_folium
 st.title("Catalonia Wildfire Risk Dashboard")
 
 # Date input
-date = st.date_input("Select a date")
+year = st.selectbox("Select Year", [2019, 2020, 2021])
+month = st.selectbox("Select Month", list(range(1, 13)))
+day = st.selectbox("Select Day", list(range(1, 32)))
+
+
 
 # Example coordinates for Catalonia (replace with actual grid points)
 latitudes = [41.5, 41.6, 41.7]
@@ -19,8 +23,9 @@ if st.button("Generate Heatmap"):
     # Call the backend API to fetch predictions
     try:
         response = requests.get(
-            "http://localhost:8000/predict",  # Replace with the backend API URL
-            params={"date": date, "latitudes": latitudes, "longitudes": longitudes}
+            "http://backend-service:8000/predict", 
+            params={"year": year, "month": month, "day": day,
+                     "latitudes": latitudes, "longitudes": longitudes}
         )
         response.raise_for_status()
         data = response.json()
