@@ -35,3 +35,9 @@ data/IberFire_demo.parquet
 # MLFlow metadata and artifacts
 mlruns/
 model/IberFire_demo_model.ubj
+
+# Datasets in NetCDF, Zarr and other formats
+data/*.nc
+data/*.zarr
+data/*.parquet
+data/*.csv
