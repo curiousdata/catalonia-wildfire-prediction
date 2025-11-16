@@ -41,3 +41,4 @@ data/*.nc
 data/*.zarr
 data/*.parquet
 data/*.csv
+data/
