@@ -15,6 +15,7 @@ from pathlib import Path
 import time
 from datetime import datetime
 from numcodecs import Blosc  # NEW: import Blosc from numcodecs
+from dask.diagnostics import ProgressBar
 
 
 # ============================================================================
@@ -133,12 +134,13 @@ def main():
     
     try:
         # Write with progress monitoring
-        ds_rechunked.to_zarr(
-            ZARR_PATH,
-            mode="w",
-            encoding=encoding,
-            consolidated=True,  # create consolidated metadata for faster opens
-        )
+        with ProgressBar():
+            ds_rechunked.to_zarr(
+                ZARR_PATH,
+                mode="w",
+                encoding=encoding,
+                consolidated=True,  # create consolidated metadata for faster opens
+            )
     except Exception as e:
         print(f"\n❌ ERROR writing Zarr: {e}")
         sys.exit(1)
