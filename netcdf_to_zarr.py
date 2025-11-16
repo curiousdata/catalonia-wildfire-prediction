@@ -1,8 +1,8 @@
 """
 Convert IberFire NetCDF dataset to Zarr format for faster preprocessing.
 
-This is a ONE-TIME conversion that takes 1-2 hours for 730 GB data.
-After conversion, preprocessing becomes 5-10× faster.
+This is a ONE-TIME conversion that may take a long time for a 730 GB dataset,
+but once done, Zarr will generally allow much faster and more flexible preprocessing.
 
 Usage:
     python netcdf_to_zarr.py
@@ -27,11 +27,11 @@ NETCDF_PATH = Path("data/IberFire.nc")
 # Output Zarr directory
 ZARR_PATH = Path("data/IberFire.zarr")
 
-# Chunking strategy (optimal for sequential time access)
+# Chunking strategy (balanced chunking for time + space access)
 CHUNKS = {
-    "time": 1,    # one time step per chunk (fast random time access)
-    "y": -1,      # don't chunk spatial dimensions (load full slices)
-    "x": -1,
+    "time": 64,    # 64 time steps per chunk (good for sequential windows)
+    "y": 256,      # spatial tiling
+    "x": 256,
 }
 
 # Compression settings
@@ -77,7 +77,11 @@ def main():
     start = time.time()
     
     try:
-        ds = xr.open_dataset(NETCDF_PATH)
+        ds = xr.open_dataset(
+            NETCDF_PATH,
+            engine="h5netcdf",
+            decode_times=True,
+        )
     except Exception as e:
         print(f"❌ ERROR opening NetCDF: {e}")
         sys.exit(1)
@@ -87,6 +91,13 @@ def main():
     print(f"  Variables: {list(ds.data_vars)}")
     print(f"  Dimensions: {dict(ds.dims)}")
     print(f"  Size: {ds.nbytes / 1e9:.1f} GB\n")
+    
+    # Downcast float64 → float32 where appropriate (leave ints/bools as-is)
+    print("Downcasting float64 variables to float32 (if any)...")
+    for var in ds.data_vars:
+        if ds[var].dtype == "float64":
+            ds[var] = ds[var].astype("float32")
+    print("  ✓ Downcasting complete\n")
     
     # Step 2: Rechunk dataset
     print(f"Step 2/3: Rechunking with {CHUNKS}...")
@@ -108,8 +119,8 @@ def main():
     
     # Step 3: Write to Zarr
     print(f"Step 3/3: Writing to Zarr (this is the slow part)...")
-    print(f"  Estimated time: 1-3 hours for large datasets")
-    print(f"  Progress will be printed every 10 minutes...\n")
+    print(f"  This may take a long time depending on disk and CPU...")
+    print()
     
     start = time.time()
     
@@ -118,7 +129,6 @@ def main():
     for var in ds.data_vars:
         encoding[var] = {
             "compressor": COMPRESSOR,
-            "dtype": "float32",  # ensure consistent dtype
         }
     
     try:
