@@ -37,8 +37,8 @@ mlruns/
 model/IberFire_demo_model.ubj
 
 # Datasets in NetCDF, Zarr and other formats
-data/*.nc
-data/*.zarr
-data/*.parquet
-data/*.csv
-data/
+*.nc
+*.zarr
+*.parquet
+*.csv
+*.npz
