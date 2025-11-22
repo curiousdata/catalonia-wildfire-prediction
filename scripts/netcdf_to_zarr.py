@@ -23,10 +23,10 @@ from dask.diagnostics import ProgressBar
 # ============================================================================
 
 # Input NetCDF file
-NETCDF_PATH = Path("data/IberFire.nc")
+NETCDF_PATH = Path("data/bronze/IberFire.nc")
 
 # Output Zarr directory
-ZARR_PATH = Path("data/IberFire.zarr")
+ZARR_PATH = Path("data/silver/IberFire.zarr")
 
 # Chunking strategy (balanced chunking for time + space access)
 CHUNKS = {
