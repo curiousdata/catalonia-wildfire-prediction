@@ -274,6 +274,162 @@ class CNNIberFireDataset(Dataset):
         }
 
 
+class SimpleIberFireSegmentationDataset(Dataset):
+    """
+    Minimal PyTorch Dataset for IberFire-style wildfire *segmentation* (heatmap output).
+
+    This is a simpler MVP version focused on:
+      - Full-image inputs (no tile-level classification)
+      - Pixel-wise fire mask as target (for U-Net / FCN-style models)
+      - Optional lead time (e.g., predict fire at t+1 from features at t)
+      - Optional on-the-fly normalization
+
+    Args:
+        zarr_path: Path to IberFire.zarr directory
+        time_start: Start date (e.g., "2018-01-01")
+        time_end: End date (e.g., "2020-12-31")
+        feature_vars: List of feature variable names
+        label_var: Label variable name (e.g., "is_near_fire")
+        spatial_downsample: Spatial downsampling factor (e.g., 4 for 4x4 pooling)
+        lead_time: Predict label at t+lead_time (0 = same day, 1 = tomorrow, etc.)
+        stats: Optional dict with precomputed normalization stats
+               {var_name: {"mean": float, "std": float}}
+        compute_stats: Whether to compute stats if not provided
+
+    Usage (typical for U-Net MVP):
+        >>> dataset = SimpleIberFireSegmentationDataset(
+        ...     zarr_path="data/processed/IberFire.zarr",
+        ...     time_start="2018-01-01",
+        ...     time_end="2020-12-31",
+        ...     feature_vars=["wind_speed_mean", "t2m_mean", "RH_mean"],
+        ...     label_var="is_near_fire",
+        ...     spatial_downsample=4,
+        ...     lead_time=1,  # predict tomorrow's fire heatmap
+        ...     compute_stats=True,
+        ... )
+    """
+
+    def __init__(
+        self,
+        zarr_path: str,
+        time_start: str,
+        time_end: str,
+        feature_vars: List[str],
+        label_var: str,
+        spatial_downsample: int = 4,
+        lead_time: int = 1,
+        stats: Optional[Dict[str, Dict[str, float]]] = None,
+        compute_stats: bool = False,
+    ):
+        self.zarr_path = Path(zarr_path)
+        self.feature_vars = feature_vars
+        self.label_var = label_var
+        self.downsample = spatial_downsample
+        self.lead_time = lead_time
+
+        # Open Zarr dataset (read-only)
+        print(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
+        self.root = zarr.open(str(self.zarr_path), mode="r")
+
+        # Select time indices within range
+        print(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
+        time = self.root["time"][:]
+        mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
+        all_indices = np.where(mask)[0]
+
+        # Ensure we can look ahead by lead_time
+        if self.lead_time > 0:
+            max_valid = len(time) - self.lead_time - 1
+            all_indices = all_indices[all_indices <= max_valid]
+
+        if len(all_indices) == 0:
+            raise ValueError("No valid time indices found for the given range and lead_time.")
+
+        self.time_indices = all_indices
+        print(f"[SimpleDataset] Total usable time steps: {len(self.time_indices)}")
+
+        # Load or compute normalization stats
+        if stats is not None:
+            print("[SimpleDataset] Using provided normalization stats.")
+            self.stats = stats
+        elif compute_stats:
+            print("[SimpleDataset] Computing normalization stats from data...")
+            self.stats = self._compute_stats()
+        else:
+            print("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
+            self.stats = {v: {"mean": 0.0, "std": 1.0} for v in self.feature_vars}
+
+    def _compute_stats(self) -> Dict[str, Dict[str, float]]:
+        """Compute simple per-variable mean/std from a subset of time steps."""
+        stats: Dict[str, Dict[str, float]] = {}
+        # Sample up to 100 time steps for efficiency
+        sample_indices = np.random.choice(
+            self.time_indices,
+            size=min(100, len(self.time_indices)),
+            replace=False,
+        )
+
+        for v in self.feature_vars:
+            # Concatenate all sampled time slices into one array
+            data_list = []
+            for idx in sample_indices:
+                arr = self.root[v][idx, ::self.downsample, ::self.downsample]
+                data_list.append(arr.ravel())
+            data = np.concatenate(data_list)
+
+            mean = float(np.nanmean(data))
+            std = float(np.nanstd(data))
+            if std < 1e-6:
+                std = 1.0
+
+            stats[v] = {"mean": mean, "std": std}
+            print(f"[SimpleDataset] {v}: mean={mean:.4f}, std={std:.4f}")
+
+        return stats
+
+    def __len__(self) -> int:
+        # One sample per time step
+        return len(self.time_indices)
+
+    def __getitem__(self, idx: int):
+        """
+        Returns:
+            X: Tensor of shape [C, H, W]  (features at time t)
+            y: Tensor of shape [1, H, W]  (fire mask at time t + lead_time)
+        """
+        t = self.time_indices[idx]
+        t_label = t + self.lead_time
+
+        # Load and normalize features
+        X_arrays = []
+        for v in self.feature_vars:
+            arr = self.root[v][t, ::self.downsample, ::self.downsample]
+            stat = self.stats.get(v, {"mean": 0.0, "std": 1.0})
+            mean = stat["mean"]
+            std = stat["std"] if stat["std"] > 1e-6 else 1.0
+            arr = (arr - mean) / std
+            X_arrays.append(arr)
+
+        X = np.stack(X_arrays, axis=0).astype("float32")  # [C, H, W]
+
+        # Load label at t + lead_time
+        y = self.root[self.label_var][t_label, ::self.downsample, ::self.downsample]
+        y_bin = (y > 0.5).astype("float32")[np.newaxis, ...]  # [1, H, W]
+
+        return torch.from_numpy(X), torch.from_numpy(y_bin)
+
+    def save_stats(self, path: str):
+        """Save normalization stats to JSON file."""
+        with open(path, "w") as f:
+            json.dump(self.stats, f, indent=2)
+        print(f"[SimpleDataset] Saved normalization stats to: {path}")
+
+    def get_time_value(self, idx: int) -> str:
+        """Return the datetime string for a given sample index (for debugging)."""
+        t = self.time_indices[idx]
+        time_value = self.root["time"][t]
+        return str(time_value)
+
 # Example usage and testing
 if __name__ == "__main__":
     # Example configuration
