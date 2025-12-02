@@ -408,7 +408,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         # Load and normalize features
         X_arrays = []
         for v in self.feature_vars:
-            arr = self.ds[v].isel(time=idx).values[::self.downsample, ::self.downsample]
+            arr = self.ds[v].isel(time=t).values[::self.downsample, ::self.downsample]
             stat = self.stats.get(v, {"mean": 0.0, "std": 1.0})
             mean = stat["mean"]
             std = stat["std"] if stat["std"] > 1e-6 else 1.0
