@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 from pathlib import Path
 import json
 from typing import List, Dict, Literal, Optional
+import xarray as xr
 
 
 class CNNIberFireDataset(Dataset):
@@ -329,13 +330,17 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         # Open Zarr dataset (read-only)
         print(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
-        self.root = zarr.open(str(self.zarr_path), mode="r")
+        self.ds = xr.open_zarr(self.zarr_path, consolidated = True, decode_times = True, chunks="auto")
+        time = self.ds["time"].values
+        mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
+        all_indices = np.where(mask)[0]
+        #self.root = zarr.open(str(self.zarr_path), mode="r")
 
         # Select time indices within range
         print(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
-        time = self.root["time"][:]
-        mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
-        all_indices = np.where(mask)[0]
+        # time = self.root["time"][:]
+        # mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
+        # all_indices = np.where(mask)[0]
 
         # Ensure we can look ahead by lead_time
         if self.lead_time > 0:
@@ -373,7 +378,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             # Concatenate all sampled time slices into one array
             data_list = []
             for idx in sample_indices:
-                arr = self.root[v][idx, ::self.downsample, ::self.downsample]
+                arr = self.ds[v].isel(time=idx).values[::self.downsample, ::self.downsample]
                 data_list.append(arr.ravel())
             data = np.concatenate(data_list)
 
@@ -403,7 +408,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         # Load and normalize features
         X_arrays = []
         for v in self.feature_vars:
-            arr = self.root[v][t, ::self.downsample, ::self.downsample]
+            arr = self.ds[v].isel(time=idx).values[::self.downsample, ::self.downsample]
             stat = self.stats.get(v, {"mean": 0.0, "std": 1.0})
             mean = stat["mean"]
             std = stat["std"] if stat["std"] > 1e-6 else 1.0
@@ -413,7 +418,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         X = np.stack(X_arrays, axis=0).astype("float32")  # [C, H, W]
 
         # Load label at t + lead_time
-        y = self.root[self.label_var][t_label, ::self.downsample, ::self.downsample]
+        y = self.ds[self.label_var].isel(time=t_label).values[::self.downsample, ::self.downsample]
         y_bin = (y > 0.5).astype("float32")[np.newaxis, ...]  # [1, H, W]
 
         return torch.from_numpy(X), torch.from_numpy(y_bin)
@@ -427,7 +432,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
     def get_time_value(self, idx: int) -> str:
         """Return the datetime string for a given sample index (for debugging)."""
         t = self.time_indices[idx]
-        time_value = self.root["time"][t]
+        time_value = self.ds["time"].values[t]
         return str(time_value)
 
 # Example usage and testing
