@@ -328,19 +328,18 @@ class SimpleIberFireSegmentationDataset(Dataset):
         self.downsample = spatial_downsample
         self.lead_time = lead_time
 
-        # Open Zarr dataset (read-only)
         print(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
-        self.ds = xr.open_zarr(self.zarr_path, consolidated = True, decode_times = True, chunks="auto")
-        time = self.ds["time"].values
+        self.ds = xr.open_zarr(
+            self.zarr_path,
+            consolidated=True,
+            decode_times=True,
+            chunks="auto",
+        )
+
+        print(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
+        time = self.ds["time"].values  # this is datetime64 already
         mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
         all_indices = np.where(mask)[0]
-        #self.root = zarr.open(str(self.zarr_path), mode="r")
-
-        # Select time indices within range
-        print(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
-        # time = self.root["time"][:]
-        # mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
-        # all_indices = np.where(mask)[0]
 
         # Ensure we can look ahead by lead_time
         if self.lead_time > 0:
