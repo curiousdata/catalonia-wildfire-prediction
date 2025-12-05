@@ -338,6 +338,8 @@ class SimpleIberFireSegmentationDataset(Dataset):
             decode_times=True,
             chunks="auto",
         )
+        # Also open raw Zarr root for fast array access in __getitem__
+        self.root = zarr.open(str(self.zarr_path), mode="r")
 
         print(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
         time = self.ds["time"].values  # this is datetime64 already
@@ -370,8 +372,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         # Cache static variables in memory (downsampled) to avoid repeated disk reads
         self.static_cache: Dict[str, np.ndarray] = {}
         for v in self.static_vars:
-            da = self.ds[v]
-            arr = da.values[::self.downsample, ::self.downsample].astype("float32")
+            arr = self.root[v][::self.downsample, ::self.downsample].astype("float32")
             self.static_cache[v] = arr
             print(
                 f"[SimpleDataset] Cached static var '{v}' with shape {arr.shape} "
@@ -384,6 +385,8 @@ class SimpleIberFireSegmentationDataset(Dataset):
             self.stats = stats
 
         elif compute_stats:
+            overwrite = True
+
             # If a stats file already exists, ask whether to overwrite or reuse it
             if self.stats_path is not None and self.stats_path.exists():
                 resp = input(
@@ -393,27 +396,21 @@ class SimpleIberFireSegmentationDataset(Dataset):
                     print(f"[SimpleDataset] Keeping existing stats from: {self.stats_path}")
                     with open(self.stats_path) as f:
                         self.stats = json.load(f)
-                    # After loading stats, cache optimized handles and stats arrays
-                    self._vars: Dict[str, xr.DataArray] = {v: self.ds[v] for v in self.feature_vars}
-                    self._means = np.array([self.stats[v]["mean"] for v in self.feature_vars], dtype="float32")
-                    self._stds = np.array(
-                        [max(self.stats[v]["std"], 1e-6) for v in self.feature_vars],
-                        dtype="float32",
-                    )
-                    return
+                    overwrite = False
                 else:
                     print(f"[SimpleDataset] Overwriting stats at: {self.stats_path}")
 
-            print("[SimpleDataset] Computing normalization stats from data...")
-            self.stats = self._compute_stats()
+            if overwrite:
+                print("[SimpleDataset] Computing normalization stats from data...")
+                self.stats = self._compute_stats()
 
-            # If no explicit stats_path was provided, choose a sensible default:
-            # <zarr_parent>/stats/simple_iberfire_stats.json
-            if self.stats_path is None:
-                default_dir = self.zarr_path.parent / "stats"
-                self.stats_path = default_dir / "simple_iberfire_stats.json"
+                # If no explicit stats_path was provided, choose a sensible default:
+                # <zarr_parent>/stats/simple_iberfire_stats.json
+                if self.stats_path is None:
+                    default_dir = self.zarr_path.parent / "stats"
+                    self.stats_path = default_dir / "simple_iberfire_stats.json"
 
-            self.save_stats(self.stats_path)
+                self.save_stats(self.stats_path)
 
         elif self.stats_path is not None and self.stats_path.exists():
             print(f"[SimpleDataset] Loading normalization stats from: {self.stats_path}")
@@ -424,8 +421,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             print("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
             self.stats = {v: {"mean": 0.0, "std": 1.0} for v in self.feature_vars}
 
-        # Cache data array handles and aligned stats arrays for faster __getitem__
-        self._vars: Dict[str, xr.DataArray] = {v: self.ds[v] for v in self.feature_vars}
+        # Cache aligned stats arrays for faster __getitem__
         self._means = np.array([self.stats[v]["mean"] for v in self.feature_vars], dtype="float32")
         self._stds = np.array(
             [max(self.stats[v]["std"], 1e-6) for v in self.feature_vars],
@@ -443,16 +439,15 @@ class SimpleIberFireSegmentationDataset(Dataset):
         )
 
         for v in self.feature_vars:
-            da = self.ds[v]
             data_list = []
-            if "time" in da.dims:
+            if v in self.dynamic_vars:
                 # Time-varying variable: sample across time
                 for idx in sample_indices:
-                    arr = da.isel(time=idx).values[::self.downsample, ::self.downsample]
+                    arr = self.root[v][idx, ::self.downsample, ::self.downsample]
                     data_list.append(arr.ravel())
             else:
-                # Static variable: no time dimension, use same values for all samples
-                arr = da.values[::self.downsample, ::self.downsample]
+                # Static variable: no time dimension, reuse cached array
+                arr = self.static_cache[v]
                 data_list.append(arr.ravel())
             data = np.concatenate(data_list)
 
@@ -482,10 +477,9 @@ class SimpleIberFireSegmentationDataset(Dataset):
         # Load and normalize features
         X_arrays = []
         for i, v in enumerate(self.feature_vars):
-            da = self._vars[v]
-            # If the variable has a time dimension, index it; otherwise, treat as static 2D field
-            if "time" in da.dims:
-                arr = da.isel(time=t).values[::self.downsample, ::self.downsample]
+            if v in self.dynamic_vars:
+                # Read from raw Zarr array: (time, y, x)
+                arr = self.root[v][t, ::self.downsample, ::self.downsample]
             else:
                 # Static variable: reuse cached downsampled array
                 arr = self.static_cache[v]
@@ -496,8 +490,8 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         X = np.stack(X_arrays, axis=0).astype("float32")  # [C, H, W]
 
-        # Load label at t + lead_time
-        y = self.ds[self.label_var].isel(time=t_label).values[::self.downsample, ::self.downsample]
+        # Load label at t + lead_time from raw Zarr
+        y = self.root[self.label_var][t_label, ::self.downsample, ::self.downsample]
         y_bin = (y > 0.5).astype("float32")[np.newaxis, ...]  # [1, H, W]
 
         return torch.from_numpy(X), torch.from_numpy(y_bin)
