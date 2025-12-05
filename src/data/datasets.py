@@ -296,6 +296,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         stats: Optional dict with precomputed normalization stats
                {var_name: {"mean": float, "std": float}}
         compute_stats: Whether to compute stats if not provided
+        stats_path: Optional path to load/save normalization stats JSON.
 
     Usage (typical for U-Net MVP):
         >>> dataset = SimpleIberFireSegmentationDataset(
@@ -321,12 +322,14 @@ class SimpleIberFireSegmentationDataset(Dataset):
         lead_time: int = 1,
         stats: Optional[Dict[str, Dict[str, float]]] = None,
         compute_stats: bool = False,
+        stats_path: Optional[str] = None,
     ):
         self.zarr_path = Path(zarr_path)
         self.feature_vars = feature_vars
         self.label_var = label_var
         self.downsample = spatial_downsample
         self.lead_time = lead_time
+        self.stats_path: Optional[Path] = Path(stats_path) if stats_path is not None else None
 
         print(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
         self.ds = xr.open_zarr(
@@ -356,9 +359,24 @@ class SimpleIberFireSegmentationDataset(Dataset):
         if stats is not None:
             print("[SimpleDataset] Using provided normalization stats.")
             self.stats = stats
+
+        elif self.stats_path is not None and self.stats_path.exists():
+            print(f"[SimpleDataset] Loading normalization stats from: {self.stats_path}")
+            with open(self.stats_path) as f:
+                self.stats = json.load(f)
+
         elif compute_stats:
             print("[SimpleDataset] Computing normalization stats from data...")
             self.stats = self._compute_stats()
+
+            # If no explicit stats_path was provided, choose a sensible default:
+            # <zarr_parent>/stats/simple_iberfire_stats.json
+            if self.stats_path is None:
+                default_dir = self.zarr_path.parent / "stats"
+                self.stats_path = default_dir / "simple_iberfire_stats.json"
+
+            self.save_stats(self.stats_path)
+
         else:
             print("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
             self.stats = {v: {"mean": 0.0, "std": 1.0} for v in self.feature_vars}
@@ -424,9 +442,11 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
     def save_stats(self, path: str):
         """Save normalization stats to JSON file."""
-        with open(path, "w") as f:
+        path_obj = Path(path)
+        path_obj.parent.mkdir(parents=True, exist_ok=True)
+        with open(path_obj, "w") as f:
             json.dump(self.stats, f, indent=2)
-        print(f"[SimpleDataset] Saved normalization stats to: {path}")
+        print(f"[SimpleDataset] Saved normalization stats to: {path_obj}")
 
     def get_time_value(self, idx: int) -> str:
         """Return the datetime string for a given sample index (for debugging)."""
