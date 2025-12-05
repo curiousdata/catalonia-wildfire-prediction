@@ -372,12 +372,20 @@ class SimpleIberFireSegmentationDataset(Dataset):
             print("[SimpleDataset] Using provided normalization stats.")
             self.stats = stats
 
-        elif self.stats_path is not None and self.stats_path.exists():
-            print(f"[SimpleDataset] Loading normalization stats from: {self.stats_path}")
-            with open(self.stats_path) as f:
-                self.stats = json.load(f)
-
         elif compute_stats:
+            # If a stats file already exists, ask whether to overwrite or reuse it
+            if self.stats_path is not None and self.stats_path.exists():
+                resp = input(
+                    f"[SimpleDataset] Stats found at {self.stats_path}. Do you want to overwrite? [y/N]: "
+                ).strip().lower()
+                if resp not in ("y", "yes"):
+                    print(f"[SimpleDataset] Keeping existing stats from: {self.stats_path}")
+                    with open(self.stats_path) as f:
+                        self.stats = json.load(f)
+                    return
+                else:
+                    print(f"[SimpleDataset] Overwriting stats at: {self.stats_path}")
+
             print("[SimpleDataset] Computing normalization stats from data...")
             self.stats = self._compute_stats()
 
@@ -388,6 +396,11 @@ class SimpleIberFireSegmentationDataset(Dataset):
                 self.stats_path = default_dir / "simple_iberfire_stats.json"
 
             self.save_stats(self.stats_path)
+
+        elif self.stats_path is not None and self.stats_path.exists():
+            print(f"[SimpleDataset] Loading normalization stats from: {self.stats_path}")
+            with open(self.stats_path) as f:
+                self.stats = json.load(f)
 
         else:
             print("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
