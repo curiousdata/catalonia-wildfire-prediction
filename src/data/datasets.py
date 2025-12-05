@@ -355,6 +355,18 @@ class SimpleIberFireSegmentationDataset(Dataset):
         self.time_indices = all_indices
         print(f"[SimpleDataset] Total usable time steps: {len(self.time_indices)}")
 
+        # Determine which variables are dynamic (have time dim) vs static (no time dim)
+        self.dynamic_vars: List[str] = []
+        self.static_vars: List[str] = []
+        for v in self.feature_vars:
+            da = self.ds[v]
+            if "time" in da.dims:
+                self.dynamic_vars.append(v)
+            else:
+                self.static_vars.append(v)
+        print(f"[SimpleDataset] Dynamic vars (time-dependent): {self.dynamic_vars}")
+        print(f"[SimpleDataset] Static vars (no time dimension, broadcast in time): {self.static_vars}")
+
         # Load or compute normalization stats
         if stats is not None:
             print("[SimpleDataset] Using provided normalization stats.")
@@ -392,10 +404,16 @@ class SimpleIberFireSegmentationDataset(Dataset):
         )
 
         for v in self.feature_vars:
-            # Concatenate all sampled time slices into one array
+            da = self.ds[v]
             data_list = []
-            for idx in sample_indices:
-                arr = self.ds[v].isel(time=idx).values[::self.downsample, ::self.downsample]
+            if "time" in da.dims:
+                # Time-varying variable: sample across time
+                for idx in sample_indices:
+                    arr = da.isel(time=idx).values[::self.downsample, ::self.downsample]
+                    data_list.append(arr.ravel())
+            else:
+                # Static variable: no time dimension, use same values for all samples
+                arr = da.values[::self.downsample, ::self.downsample]
                 data_list.append(arr.ravel())
             data = np.concatenate(data_list)
 
@@ -425,7 +443,12 @@ class SimpleIberFireSegmentationDataset(Dataset):
         # Load and normalize features
         X_arrays = []
         for v in self.feature_vars:
-            arr = self.ds[v].isel(time=t).values[::self.downsample, ::self.downsample]
+            da = self.ds[v]
+            # If the variable has a time dimension, index it; otherwise, treat as static 2D field
+            if "time" in da.dims:
+                arr = da.isel(time=t).values[::self.downsample, ::self.downsample]
+            else:
+                arr = da.values[::self.downsample, ::self.downsample]
             stat = self.stats.get(v, {"mean": 0.0, "std": 1.0})
             mean = stat["mean"]
             std = stat["std"] if stat["std"] > 1e-6 else 1.0
