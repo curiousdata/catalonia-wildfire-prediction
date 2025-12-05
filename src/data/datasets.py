@@ -393,6 +393,13 @@ class SimpleIberFireSegmentationDataset(Dataset):
                     print(f"[SimpleDataset] Keeping existing stats from: {self.stats_path}")
                     with open(self.stats_path) as f:
                         self.stats = json.load(f)
+                    # After loading stats, cache optimized handles and stats arrays
+                    self._vars: Dict[str, xr.DataArray] = {v: self.ds[v] for v in self.feature_vars}
+                    self._means = np.array([self.stats[v]["mean"] for v in self.feature_vars], dtype="float32")
+                    self._stds = np.array(
+                        [max(self.stats[v]["std"], 1e-6) for v in self.feature_vars],
+                        dtype="float32",
+                    )
                     return
                 else:
                     print(f"[SimpleDataset] Overwriting stats at: {self.stats_path}")
@@ -416,6 +423,14 @@ class SimpleIberFireSegmentationDataset(Dataset):
         else:
             print("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
             self.stats = {v: {"mean": 0.0, "std": 1.0} for v in self.feature_vars}
+
+        # Cache data array handles and aligned stats arrays for faster __getitem__
+        self._vars: Dict[str, xr.DataArray] = {v: self.ds[v] for v in self.feature_vars}
+        self._means = np.array([self.stats[v]["mean"] for v in self.feature_vars], dtype="float32")
+        self._stds = np.array(
+            [max(self.stats[v]["std"], 1e-6) for v in self.feature_vars],
+            dtype="float32",
+        )
 
     def _compute_stats(self) -> Dict[str, Dict[str, float]]:
         """Compute simple per-variable mean/std from a subset of time steps."""
@@ -466,17 +481,16 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         # Load and normalize features
         X_arrays = []
-        for v in self.feature_vars:
-            da = self.ds[v]
+        for i, v in enumerate(self.feature_vars):
+            da = self._vars[v]
             # If the variable has a time dimension, index it; otherwise, treat as static 2D field
             if "time" in da.dims:
                 arr = da.isel(time=t).values[::self.downsample, ::self.downsample]
             else:
                 # Static variable: reuse cached downsampled array
                 arr = self.static_cache[v]
-            stat = self.stats.get(v, {"mean": 0.0, "std": 1.0})
-            mean = stat["mean"]
-            std = stat["std"] if stat["std"] > 1e-6 else 1.0
+            mean = self._means[i]
+            std = self._stds[i]
             arr = (arr - mean) / std
             X_arrays.append(arr)
 
