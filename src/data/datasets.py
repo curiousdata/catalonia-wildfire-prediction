@@ -367,6 +367,17 @@ class SimpleIberFireSegmentationDataset(Dataset):
         print(f"[SimpleDataset] Dynamic vars (time-dependent): {self.dynamic_vars}")
         print(f"[SimpleDataset] Static vars (no time dimension, broadcast in time): {self.static_vars}")
 
+        # Cache static variables in memory (downsampled) to avoid repeated disk reads
+        self.static_cache: Dict[str, np.ndarray] = {}
+        for v in self.static_vars:
+            da = self.ds[v]
+            arr = da.values[::self.downsample, ::self.downsample].astype("float32")
+            self.static_cache[v] = arr
+            print(
+                f"[SimpleDataset] Cached static var '{v}' with shape {arr.shape} "
+                f"and dtype {arr.dtype}"
+            )
+
         # Load or compute normalization stats
         if stats is not None:
             print("[SimpleDataset] Using provided normalization stats.")
@@ -461,7 +472,8 @@ class SimpleIberFireSegmentationDataset(Dataset):
             if "time" in da.dims:
                 arr = da.isel(time=t).values[::self.downsample, ::self.downsample]
             else:
-                arr = da.values[::self.downsample, ::self.downsample]
+                # Static variable: reuse cached downsampled array
+                arr = self.static_cache[v]
             stat = self.stats.get(v, {"mean": 0.0, "std": 1.0})
             mean = stat["mean"]
             std = stat["std"] if stat["std"] > 1e-6 else 1.0
