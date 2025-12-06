@@ -158,7 +158,7 @@ import datetime
 timestamp = datetime.datetime.now().strftime("%Y%m%d")
 
 #save as a date-only stamped file
-model_path = project_root / "models" / f"unet_iberfire_{timestamp}.pth"
+model_path = project_root / "models" / f"unet_iberfire_{}{timestamp}.pth" #TODO: should be the same as the model load path (the idea is to add-train the model and return it, introducing modularity to the training process)
 os.makedirs(model_path.parent, exist_ok=True)
 
 # Save the model, optimizer state_dict, and epoch
