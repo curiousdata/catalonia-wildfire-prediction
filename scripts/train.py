@@ -56,7 +56,7 @@ train_loader = DataLoader(
     train_ds,
     batch_size=6,
     shuffle=True,
-    num_workers=4,
+    num_workers=2,
     persistent_workers=True,
     pin_memory=False,
 )
@@ -85,7 +85,7 @@ test_loader = DataLoader(
     test_ds,
     batch_size=6,
     shuffle=False,
-    num_workers=4,
+    num_workers=2,
     persistent_workers=True,
     pin_memory=False,
 )
@@ -94,7 +94,7 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 model = smp.Unet(
     encoder_name="resnet34",
-    encoder_weights="imagenet",
+    encoder_weights=None,
     in_channels=in_channels,
     classes=1,
     activation=None,
@@ -137,7 +137,7 @@ for epoch in range(NUM_EPOCHS):
         pbar.set_postfix({"loss": loss.item()})
 
     train_loss /= len(train_loader.dataset)
-    print(f"Epoch {epoch + 1}/{NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
+    print(f"Epoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
 
     # Validation after each epoch
     model.eval()
