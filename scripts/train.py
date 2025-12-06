@@ -54,10 +54,10 @@ if __name__ == '__main__':
 
     train_loader = DataLoader(
         train_ds,
-        batch_size=6,
+        batch_size=1,
         shuffle=True,
-        num_workers=2,
-        persistent_workers=True,
+        num_workers=0,
+        #persistent_workers=True,
         pin_memory=False,
     )
 
@@ -83,10 +83,10 @@ if __name__ == '__main__':
 
     test_loader = DataLoader(
         test_ds,
-        batch_size=6,
+        batch_size=1,
         shuffle=False,
-        num_workers=2,
-        persistent_workers=True,
+        num_workers=0,
+        #persistent_workers=True,
         pin_memory=False,
     )
 
@@ -115,6 +115,7 @@ if __name__ == '__main__':
         start_epoch = checkpoint["epoch"] + 1
     else:
         print(f"No model found at {checkpoint_path}. Initializing new model.")
+        os.makedirs(checkpoint_path.parent, exist_ok=True)
         start_epoch = 0
 
     NUM_EPOCHS = args.epochs
