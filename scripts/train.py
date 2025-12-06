@@ -147,28 +147,30 @@ if __name__ == '__main__':
         train_loss /= len(train_loader.dataset)
         print(f"\nEpoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
 
-        # Validation after each epoch
-        model.eval()
-        with torch.no_grad():
-            test_loss = 0.0
-            test_pbar = tqdm.tqdm(
-                test_loader,
-                desc="Validation",
-                ncols=100,
-                file=sys.stdout,
-                dynamic_ncols=False,
-            )
-            for X_val, y_val in test_pbar:
-                X_val = X_val.to(device).float()
-                y_val = y_val.to(device).float()
-                val_outputs = model(X_val)
-                val_loss = criterion(val_outputs, y_val)
-                test_loss += val_loss.item() * X_val.size(0)
-                test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
+        # Validation every 5 epochs
+        if (start_epoch + epoch + 1) % 5 == 0:
+
+            model.eval()
+            with torch.no_grad():
+                test_loss = 0.0
+                test_pbar = tqdm.tqdm(
+                    test_loader,
+                    desc="Validation",
+                    ncols=100,
+                    file=sys.stdout,
+                    dynamic_ncols=False,
+                )
+                for X_val, y_val in test_pbar:
+                    X_val = X_val.to(device).float()
+                    y_val = y_val.to(device).float()
+                    val_outputs = model(X_val)
+                    val_loss = criterion(val_outputs, y_val)
+                    test_loss += val_loss.item() * X_val.size(0)
+                    test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
         
-        test_loss /= len(test_loader.dataset)
-        print(f"Epoch {start_epoch + epoch + 1}: Test Loss: {test_loss:.4f}\n")
-        model.train()
+            test_loss /= len(test_loader.dataset)
+            print(f"Epoch {start_epoch + epoch + 1}: Test Loss: {test_loss:.4f}\n")
+            model.train()
 
     # Save the model
     checkpoint = {
