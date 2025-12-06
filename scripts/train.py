@@ -1,13 +1,17 @@
 import argparse
-
-# Setup
 import sys
 from pathlib import Path
+
+# Add project root to path BEFORE importing from src
+project_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(project_root))
+
+# Now import from src
 import segmentation_models_pytorch as smp
 import torch
 import tqdm
-from src.data.datasets import SimpleIberFireSegmentationDataset
 from torch.utils.data import DataLoader
+from src.data.datasets import SimpleIberFireSegmentationDataset
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model file inside models/")
@@ -15,9 +19,6 @@ parser.add_argument("--epochs", type=int, required=True, help="Number of trainin
 args = parser.parse_args()
 
 model_name = args.model_name
-
-project_root = Path.cwd().parent
-sys.path.insert(0, str(project_root))
 
 ZARR_PATH = project_root / "data" / "silver" / "IberFire.zarr"
 
