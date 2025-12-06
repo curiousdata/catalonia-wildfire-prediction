@@ -7,6 +7,8 @@ Arguments:
 - epochs: Number of training epochs.
 """
 
+import argparse
+
 # Setup
 import sys
 from pathlib import Path
@@ -16,6 +18,11 @@ import torch
 import tqdm
 from src.data.datasets import SimpleIberFireSegmentationDataset
 from torch.utils.data import DataLoader
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--model_name", type=str, required=True, help="Name of the model file inside models/")
+args = parser.parse_args()
+model_name = args.model_name
 
 project_root = Path.cwd().parent
 sys.path.insert(0, str(project_root))
@@ -106,14 +113,18 @@ pos_weight = torch.tensor([10.0], device=device)
 criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
-# Load the checkpoint
-checkpoint_path = project_root / "models" / "unet_iberfire_.pth" #TODO: specify correct path from input
-checkpoint = torch.load(checkpoint_path, map_location=device)
-model.load_state_dict(checkpoint["model_state"])
-optimizer.load_state_dict(checkpoint["optimizer_state"])
+checkpoint_path = project_root / "models" / model_name
 
-start_epoch = checkpoint["epoch"] + 1
-print("Resuming from epoch:", start_epoch)
+if checkpoint_path.exists():
+    print(f"Loading existing model from {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state"])
+    optimizer.load_state_dict(checkpoint["optimizer_state"])
+    start_epoch = checkpoint["epoch"] + 1
+else:
+    print(f"No model found at {checkpoint_path}. Initializing new model with ImageNet weights.")
+    start_epoch = 0
+    # model already created above with imagenet weights if specified
 
 NUM_EPOCHS = 20
 model.train()
@@ -154,18 +165,10 @@ test_loss /= len(test_loader.dataset)
 print(f"Test Loss: {test_loss:.4f}")
 
 # Save the model 
-import os
-import datetime
-timestamp = datetime.datetime.now().strftime("%Y%m%d")
-
-#save as a date-only stamped file
-model_path = project_root / "models" / f"unet_iberfire_{timestamp}.pth" #TODO: should be the same as the model load path (the idea is to add-train the model and return it, introducing modularity to the training process)
-os.makedirs(model_path.parent, exist_ok=True)
-
-# Save the model, optimizer state_dict, and epoch
 checkpoint = {
-    "epoch": epoch,
+    "epoch": start_epoch + NUM_EPOCHS - 1,
     "model_state": model.state_dict(),
     "optimizer_state": optimizer.state_dict(),
 }
-torch.save(checkpoint, model_path)
+torch.save(checkpoint, checkpoint_path)
+print(f"Model saved to {checkpoint_path}")
