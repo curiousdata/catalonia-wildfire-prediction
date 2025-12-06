@@ -152,3 +152,19 @@ with torch.no_grad():
 test_loss /= len(test_loader.dataset)
 print(f"Test Loss: {test_loss:.4f}")
 
+# Save the model 
+import os
+import datetime
+timestamp = datetime.datetime.now().strftime("%Y%m%d")
+
+#save as a date-only stamped file
+model_path = project_root / "models" / f"unet_iberfire_{timestamp}.pth"
+os.makedirs(model_path.parent, exist_ok=True)
+
+# Save the model, optimizer state_dict, and epoch
+checkpoint = {
+    "epoch": epoch,
+    "model_state": model.state_dict(),
+    "optimizer_state": optimizer.state_dict(),
+}
+torch.save(checkpoint, model_path)
