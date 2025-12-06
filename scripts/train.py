@@ -21,13 +21,12 @@ from torch.utils.data import DataLoader
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model file inside models/")
+parser.add_argument("--epochs", type=int, required=True, help="Number of training epochs")
 args = parser.parse_args()
 model_name = args.model_name
 
 project_root = Path.cwd().parent
 sys.path.insert(0, str(project_root))
-
-from torch.utils.data import DataLoader
 
 ZARR_PATH = project_root / "data" / "silver" / "IberFire.zarr"
 
@@ -126,11 +125,11 @@ else:
     start_epoch = 0
     # model already created above with imagenet weights if specified
 
-NUM_EPOCHS = 20
+NUM_EPOCHS = args.epochs
 model.train()
 for epoch in range(NUM_EPOCHS):
     train_loss = 0.0
-    pbar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}", ncols = 100)
+    pbar = tqdm.tqdm(train_loader, desc=f"Epoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}", ncols = 100)
     for X_batch, y_batch in pbar:
         X_batch = X_batch.to(device).float()
         y_batch = y_batch.to(device).float()
@@ -146,7 +145,7 @@ for epoch in range(NUM_EPOCHS):
         pbar.set_postfix({"loss": loss.item()})
 
     train_loss /= len(train_loader.dataset)
-    test_loss = 0.0 # TODO: also compute validation loss here
+    test_loss = 0.0  # validation pass follows
     print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
 
     # Test the model's loss on the test set
@@ -166,7 +165,7 @@ print(f"Test Loss: {test_loss:.4f}")
 
 # Save the model 
 checkpoint = {
-    "epoch": start_epoch + NUM_EPOCHS - 1,
+    "epoch": start_epoch + NUM_EPOCHS,
     "model_state": model.state_dict(),
     "optimizer_state": optimizer.state_dict(),
 }
