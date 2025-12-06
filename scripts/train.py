@@ -1,4 +1,5 @@
 import argparse
+import time
 import sys
 from pathlib import Path
 
@@ -117,6 +118,7 @@ if __name__ == '__main__':
         start_epoch = 0
 
     NUM_EPOCHS = args.epochs
+    overall_start = time.time()
     model.train()
     for epoch in range(NUM_EPOCHS):
         train_loss = 0.0
@@ -173,4 +175,7 @@ if __name__ == '__main__':
         "optimizer_state": optimizer.state_dict(),
     }
     torch.save(checkpoint, checkpoint_path)
+    total_duration = time.time() - overall_start
+    print(f"Total training time: {total_duration:.2f} seconds")
+    print(f"Average time per epoch: {(total_duration / NUM_EPOCHS):.2f} seconds")
     print(f"Model saved to {checkpoint_path}")
