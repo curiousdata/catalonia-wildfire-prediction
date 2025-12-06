@@ -31,14 +31,10 @@ if __name__ == '__main__':
         "total_precipitation_mean",
         "is_holiday",
         "popdens_2020",
-        "elevation_mean",
         "dist_to_railways_mean",
         "dist_to_roads_mean",
-        "dist_to_waterways_mean",
-        "roughness_mean",
         "slope_mean",
         "CLC_2018_forest_proportion",
-        "CLC_2018_open_space_proportion",
     ]
 
     in_channels = len(feature_vars)
@@ -49,7 +45,7 @@ if __name__ == '__main__':
         time_end="2020-12-31",
         feature_vars=feature_vars,
         label_var="is_near_fire",
-        spatial_downsample=4,
+        spatial_downsample=6,
         lead_time=0,
         compute_stats=True,
         stats_path=TRAIN_STATS_PATH,
@@ -78,7 +74,7 @@ if __name__ == '__main__':
         time_end="2021-12-31",
         feature_vars=feature_vars,
         label_var="is_near_fire",
-        spatial_downsample=4,
+        spatial_downsample=6,
         lead_time=0,
         compute_stats=False,
         stats_path=TRAIN_STATS_PATH,
@@ -96,7 +92,7 @@ if __name__ == '__main__':
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     model = smp.Unet(
-        encoder_name="resnet18",
+        encoder_name="mobilenet_v2",
         encoder_weights=None,
         in_channels=in_channels,
         classes=1,
@@ -124,7 +120,13 @@ if __name__ == '__main__':
     model.train()
     for epoch in range(NUM_EPOCHS):
         train_loss = 0.0
-        pbar = tqdm.tqdm(train_loader, desc=f"Epoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}", ncols=100)
+        pbar = tqdm.tqdm(
+            train_loader,
+            desc=f"Epoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}",
+            ncols=100,
+            file=sys.stdout,  # force stdout
+            dynamic_ncols=False,  # fixed width
+        )
         for X_batch, y_batch in pbar:
             X_batch = X_batch.to(device).float()
             y_batch = y_batch.to(device).float()
@@ -136,23 +138,32 @@ if __name__ == '__main__':
             optimizer.step()
 
             train_loss += loss.item() * X_batch.size(0)
-            pbar.set_postfix({"loss": loss.item()})
+            pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
         train_loss /= len(train_loader.dataset)
-        print(f"Epoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
+        print(f"\nEpoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
 
         # Validation after each epoch
         model.eval()
         with torch.no_grad():
             test_loss = 0.0
-            for X_val, y_val in test_loader:
+            test_pbar = tqdm.tqdm(
+                test_loader,
+                desc="Validation",
+                ncols=100,
+                file=sys.stdout,
+                dynamic_ncols=False,
+            )
+            for X_val, y_val in test_pbar:
                 X_val = X_val.to(device).float()
                 y_val = y_val.to(device).float()
                 val_outputs = model(X_val)
                 val_loss = criterion(val_outputs, y_val)
                 test_loss += val_loss.item() * X_val.size(0)
+                test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
+        
         test_loss /= len(test_loader.dataset)
-        print(f"Epoch {start_epoch + epoch + 1}: Test Loss: {test_loss:.4f}")
+        print(f"Epoch {start_epoch + epoch + 1}: Test Loss: {test_loss:.4f}\n")
         model.train()
 
     # Save the model
