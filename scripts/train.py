@@ -135,6 +135,7 @@ for epoch in range(NUM_EPOCHS):
         pbar.set_postfix({"loss": loss.item()})
 
     train_loss /= len(train_loader.dataset)
+    test_loss = 0.0 # TODO: also compute validation loss here
     print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
 
     # Test the model's loss on the test set
@@ -158,7 +159,7 @@ import datetime
 timestamp = datetime.datetime.now().strftime("%Y%m%d")
 
 #save as a date-only stamped file
-model_path = project_root / "models" / f"unet_iberfire_{}{timestamp}.pth" #TODO: should be the same as the model load path (the idea is to add-train the model and return it, introducing modularity to the training process)
+model_path = project_root / "models" / f"unet_iberfire_{timestamp}.pth" #TODO: should be the same as the model load path (the idea is to add-train the model and return it, introducing modularity to the training process)
 os.makedirs(model_path.parent, exist_ok=True)
 
 # Save the model, optimizer state_dict, and epoch
