@@ -114,3 +114,41 @@ optimizer.load_state_dict(checkpoint["optimizer_state"])
 
 start_epoch = checkpoint["epoch"] + 1
 print("Resuming from epoch:", start_epoch)
+
+NUM_EPOCHS = 20
+model.train()
+for epoch in range(NUM_EPOCHS):
+    train_loss = 0.0
+    pbar = tqdm.tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}", ncols = 100)
+    for X_batch, y_batch in pbar:
+        X_batch = X_batch.to(device).float()
+        y_batch = y_batch.to(device).float()
+
+        optimizer.zero_grad()
+        outputs = model(X_batch)
+        loss = criterion(outputs, y_batch)
+        loss.backward()
+        optimizer.step()
+
+        train_loss += loss.item() * X_batch.size(0)
+
+        pbar.set_postfix({"loss": loss.item()})
+
+    train_loss /= len(train_loader.dataset)
+    print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
+
+    # Test the model's loss on the test set
+model.eval()
+test_loss = 0.0
+with torch.no_grad():
+    for X_batch, y_batch in test_loader:
+        X_batch = X_batch.to(device).float()
+        y_batch = y_batch.to(device).float()
+
+        outputs = model(X_batch)
+        loss = criterion(outputs, y_batch)
+
+        test_loss += loss.item() * X_batch.size(0)
+test_loss /= len(test_loader.dataset)
+print(f"Test Loss: {test_loss:.4f}")
+
