@@ -96,7 +96,7 @@ if __name__ == '__main__':
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     model = smp.Unet(
-        encoder_name="resnet34",
+        encoder_name="resnet18",
         encoder_weights=None,
         in_channels=in_channels,
         classes=1,
