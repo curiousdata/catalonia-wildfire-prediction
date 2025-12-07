@@ -10,7 +10,7 @@ from datetime import datetime
 # Paths
 # ------------------------------------------------------------------
 OLD_ZARR = Path("data/silver/IberFire.zarr")
-NEW_ZARR = Path("data/silver/IberFire_time1_full.zarr")  # stays in silver for now
+NEW_ZARR = Path("data/silver/IberFire_time1_xyfull.zarr")  # stays in silver for now
 
 # For reference: original dims are (time=6241, y=920, x=1188)
 CHUNKS = {
@@ -20,7 +20,7 @@ CHUNKS = {
 }
 
 COMPRESSOR = Blosc(
-    cname="zstd",  # or "lz4" if you want even faster decompress / larger files
+    cname="zstd",  
     clevel=3,
     shuffle=2,
 )
