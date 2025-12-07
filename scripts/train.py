@@ -121,7 +121,7 @@ if __name__ == '__main__':
 
         checkpoint_path = project_root / "models" / model_name
 
-        if checkpoint_path.exists():
+        if checkpoint_path.exists(): #TODO: correct model load structure (weights only)
             print(f"Loading existing model from {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint["model_state"])
