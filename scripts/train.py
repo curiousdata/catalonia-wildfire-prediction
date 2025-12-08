@@ -4,6 +4,7 @@ import sys
 import os
 from pathlib import Path
 import mlflow
+import mlflow.pytorch
 from sklearn.metrics import roc_auc_score
 import numpy as np
 
@@ -33,6 +34,20 @@ if __name__ == '__main__':
         mlflow.log_param("model_name", model_name)
 
         ZARR_PATH = project_root / "data" / "silver" / "IberFire_time1_xyfull.zarr"
+        mlflow.log_param("zarr_path", str(ZARR_PATH))
+
+        train_time_start = "2015-01-01"
+        train_time_end = "2020-12-31"
+        val_time_start = "2021-01-01"
+        val_time_end = "2021-12-31"
+        spatial_downsample = 4
+        lead_time = 0
+        mlflow.log_param("train_time_start", train_time_start)
+        mlflow.log_param("train_time_end", train_time_end)
+        mlflow.log_param("val_time_start", val_time_start)
+        mlflow.log_param("val_time_end", val_time_end)
+        mlflow.log_param("spatial_downsample", spatial_downsample)
+        mlflow.log_param("lead_time", lead_time)
 
         feature_vars = [
             "wind_speed_mean",
@@ -59,12 +74,12 @@ if __name__ == '__main__':
         TRAIN_STATS_PATH = project_root / "stats" / "simple_iberfire_stats_train.json"
         train_ds = SimpleIberFireSegmentationDataset(
             zarr_path=ZARR_PATH,
-            time_start="2015-01-01",
-            time_end="2020-12-31",
+            time_start=train_time_start,
+            time_end=train_time_end,
             feature_vars=feature_vars,
             label_var="is_near_fire",
-            spatial_downsample=4,
-            lead_time=0,
+            spatial_downsample=spatial_downsample,
+            lead_time=lead_time,
             compute_stats=True,
             stats_path=TRAIN_STATS_PATH,
         )
@@ -87,12 +102,12 @@ if __name__ == '__main__':
         # test dataset
         test_ds = SimpleIberFireSegmentationDataset(
             zarr_path=ZARR_PATH,
-            time_start="2021-01-01",
-            time_end="2021-12-31",
+            time_start=val_time_start,
+            time_end=val_time_end,
             feature_vars=feature_vars,
             label_var="is_near_fire",
-            spatial_downsample=4,
-            lead_time=0,
+            spatial_downsample=spatial_downsample,
+            lead_time=lead_time,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
         )
@@ -216,9 +231,14 @@ if __name__ == '__main__':
 
             model.train()
 
-        # Save the model weights only
+        # Save the model weights locally for resume training
         torch.save(model.state_dict(), checkpoint_path)
-        mlflow.log_artifact(str(checkpoint_path))
+
+        # Log the model to MLflow for traceability and later loading
+        mlflow.pytorch.log_model(
+            model,
+            artifact_path="unet_model"
+        )
         total_duration = time.time() - overall_start
         print(f"Total training time: {total_duration:.2f} seconds")
         print(f"Average time per epoch: {(total_duration / NUM_EPOCHS):.2f} seconds")
