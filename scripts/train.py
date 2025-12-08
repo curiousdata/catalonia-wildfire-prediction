@@ -121,11 +121,11 @@ if __name__ == '__main__':
 
         checkpoint_path = project_root / "models" / model_name
 
-        if checkpoint_path.exists(): #TODO: correct model load structure (weights only)
+        if checkpoint_path.exists():
             print(f"Loading existing model from {checkpoint_path}")
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-            model.load_state_dict(checkpoint["model_state"])
-            start_epoch = checkpoint["epoch"] + 1
+            state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
+            model.load_state_dict(state_dict)
+            start_epoch = 0
         else:
             print(f"No model found at {checkpoint_path}. Initializing new model.")
             os.makedirs(checkpoint_path.parent, exist_ok=True)
@@ -186,11 +186,7 @@ if __name__ == '__main__':
                 mlflow.log_metric("val_loss", test_loss, step=start_epoch + epoch + 1)
                 model.train()
 
-        # Save the model
-        checkpoint = {
-            "epoch": start_epoch + NUM_EPOCHS,
-            "model_state": model.state_dict(),
-        }
+        # Save the model weights only
         torch.save(model.state_dict(), checkpoint_path)
         mlflow.log_artifact(str(checkpoint_path))
         total_duration = time.time() - overall_start
