@@ -69,7 +69,11 @@ if __name__ == '__main__':
         mlflow.log_param("epochs", args.epochs)
         mlflow.log_param("feature_vars", ",".join(feature_vars))
         lr = 1e-4
+        weight_decay = 1e-2
+        decoder_dropout = 0.2
         mlflow.log_param("lr", lr)
+        mlflow.log_param("weight_decay", weight_decay)
+        mlflow.log_param("decoder_dropout", decoder_dropout)
 
         TRAIN_STATS_PATH = project_root / "stats" / "simple_iberfire_stats_train.json"
         train_ds = SimpleIberFireSegmentationDataset(
@@ -128,12 +132,13 @@ if __name__ == '__main__':
             in_channels=in_channels,
             classes=1,
             activation=None,
+            decoder_dropout=decoder_dropout,
         )
 
         model = model.to(device)
         pos_weight = torch.tensor([10.0], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         checkpoint_path = project_root / "models" / model_name
 
@@ -148,6 +153,10 @@ if __name__ == '__main__':
         NUM_EPOCHS = args.epochs
         overall_start = time.time()
         model.train()
+        best_val_loss = float("inf")
+        patience = 3
+        epochs_no_improve = 0
+        best_model_state = None
         for epoch in range(NUM_EPOCHS):
             train_loss = 0.0
             pbar = tqdm.tqdm(
@@ -229,7 +238,22 @@ if __name__ == '__main__':
             mlflow.log_metric("f1_score", f1, step=epoch + 1)
             mlflow.log_metric("roc_auc", roc_auc, step=epoch + 1)
 
+            # Early stopping and best-model tracking based on validation loss
+            if test_loss < best_val_loss - 1e-4:
+                best_val_loss = test_loss
+                epochs_no_improve = 0
+                best_model_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            else:
+                epochs_no_improve += 1
+                if epochs_no_improve >= patience:
+                    print(f"Early stopping triggered at epoch {epoch + 1}")
+                    break
+
             model.train()
+
+        # Restore best model (by validation loss) if early stopping was triggered
+        if best_model_state is not None:
+            model.load_state_dict(best_model_state)
 
         # Save the model weights locally for resume training
         torch.save(model.state_dict(), checkpoint_path)
@@ -243,6 +267,9 @@ if __name__ == '__main__':
             input_example=input_example,
         )
         total_duration = time.time() - overall_start
+        # `epoch` will be the last epoch index reached (0-based) if the loop ran at least once
+        epochs_ran = (epoch + 1) if "epoch" in locals() else 0
+        avg_time = total_duration / epochs_ran if epochs_ran > 0 else 0.0
         print(f"Total training time: {total_duration:.2f} seconds")
-        print(f"Average time per epoch: {(total_duration / NUM_EPOCHS):.2f} seconds")
+        print(f"Average time per epoch: {avg_time:.2f} seconds over {epochs_ran} epochs")
         print(f"Model saved to {checkpoint_path}")
