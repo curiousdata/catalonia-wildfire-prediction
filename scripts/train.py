@@ -60,7 +60,7 @@ if __name__ == '__main__':
             time_end="2020-12-31",
             feature_vars=feature_vars,
             label_var="is_near_fire",
-            spatial_downsample=6,
+            spatial_downsample=4,
             lead_time=0,
             compute_stats=True,
             stats_path=TRAIN_STATS_PATH,
@@ -71,7 +71,6 @@ if __name__ == '__main__':
             batch_size=1,
             shuffle=True,
             num_workers=0,
-            #persistent_workers=True,
             pin_memory=False,
         )
 
@@ -89,7 +88,7 @@ if __name__ == '__main__':
             time_end="2021-12-31",
             feature_vars=feature_vars,
             label_var="is_near_fire",
-            spatial_downsample=6,
+            spatial_downsample=4,
             lead_time=0,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
@@ -100,7 +99,6 @@ if __name__ == '__main__':
             batch_size=1,
             shuffle=False,
             num_workers=0,
-            #persistent_workers=True,
             pin_memory=False,
         )
 
@@ -125,11 +123,9 @@ if __name__ == '__main__':
             print(f"Loading existing model from {checkpoint_path}")
             state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
             model.load_state_dict(state_dict)
-            start_epoch = 0
         else:
             print(f"No model found at {checkpoint_path}. Initializing new model.")
             os.makedirs(checkpoint_path.parent, exist_ok=True)
-            start_epoch = 0
 
         NUM_EPOCHS = args.epochs
         overall_start = time.time()
@@ -138,7 +134,7 @@ if __name__ == '__main__':
             train_loss = 0.0
             pbar = tqdm.tqdm(
                 train_loader,
-                desc=f"Epoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}",
+                desc=f"Epoch: {epoch + 1}/{NUM_EPOCHS}",
                 ncols=100,
                 file=sys.stdout,  # force stdout
                 dynamic_ncols=False,  # fixed width
@@ -157,11 +153,11 @@ if __name__ == '__main__':
                 pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
             train_loss /= len(train_loader.dataset)
-            print(f"\nEpoch {start_epoch + epoch + 1}/{start_epoch + NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
-            mlflow.log_metric("train_loss", train_loss, step=start_epoch + epoch + 1)
+            print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
+            mlflow.log_metric("train_loss", train_loss, step= epoch + 1)
 
             # Validation every 5 epochs
-            if (start_epoch + epoch + 1) % 5 == 0:
+            if (epoch + 1) % 5 == 0:
 
                 model.eval()
                 with torch.no_grad():
@@ -182,8 +178,8 @@ if __name__ == '__main__':
                         test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
             
                 test_loss /= len(test_loader.dataset)
-                print(f"Epoch {start_epoch + epoch + 1}: Test Loss: {test_loss:.4f}\n")
-                mlflow.log_metric("val_loss", test_loss, step=start_epoch + epoch + 1)
+                print(f"Epoch { epoch + 1}: Test Loss: {test_loss:.4f}\n")
+                mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
                 model.train()
 
         # Save the model weights only
