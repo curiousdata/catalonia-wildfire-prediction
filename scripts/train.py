@@ -46,6 +46,7 @@ if __name__ == '__main__':
         ]
 
         in_channels = len(feature_vars)
+        mlflow.log_param("architecture", f"Unet(mobilenet_v2,in={in_channels})")
         mlflow.log_param("encoder_name", "mobilenet_v2")
         mlflow.log_param("in_channels", in_channels)
         mlflow.log_param("epochs", args.epochs)
@@ -74,12 +75,12 @@ if __name__ == '__main__':
             pin_memory=False,
         )
 
-        X = train_ds[0][0].unsqueeze(0)
-        y = train_ds[0][1].unsqueeze(0)
+        # Lightweight dataset sanity check (single sample access)
+        sample_X, sample_y = train_ds[0]
         assert len(train_ds) > 0, "Training dataset is empty!"
-        assert X.shape[1] == in_channels, f"Expected {in_channels} input channels, got {X.shape[1]}"
-        assert y.shape[1] == 1, f"Expected 1 output channel, got {y.shape[1]}"
-        assert X.shape[2:] == y.shape[2:], "Input and output spatial dimensions do not match"
+        assert sample_X.shape[0] == in_channels, f"Expected {in_channels} input channels, got {sample_X.shape[0]}"
+        assert sample_y.shape[0] == 1, f"Expected 1 output channel, got {sample_y.shape[0]}"
+        assert sample_X.shape[1:] == sample_y.shape[1:], "Input and output spatial dimensions do not match"
 
         # test dataset
         test_ds = SimpleIberFireSegmentationDataset(
