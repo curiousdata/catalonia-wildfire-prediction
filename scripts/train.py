@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import mlflow
 from sklearn.metrics import roc_auc_score
+import numpy as np
 
 # Add project root to path BEFORE importing from src
 project_root = Path(__file__).resolve().parents[1]
@@ -160,6 +161,9 @@ if __name__ == '__main__':
             model.eval()
             with torch.no_grad():
                 test_loss = 0.0
+                all_probs = []
+                all_targets = []
+
                 test_pbar = tqdm.tqdm(
                     test_loader,
                     desc="Validation",
@@ -170,36 +174,46 @@ if __name__ == '__main__':
                 for X_val, y_val in test_pbar:
                     X_val = X_val.to(device).float()
                     y_val = y_val.to(device).float()
+
                     val_outputs = model(X_val)
                     val_loss = criterion(val_outputs, y_val)
                     test_loss += val_loss.item() * X_val.size(0)
                     test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
 
+                    # collect probabilities and targets for metrics
+                    probs_batch = torch.sigmoid(val_outputs).detach().cpu().view(-1)
+                    targets_batch = y_val.detach().cpu().view(-1)
+                    all_probs.append(probs_batch)
+                    all_targets.append(targets_batch)
+
             test_loss /= len(test_loader.dataset)
 
+            # concatenate all batches
+            all_probs = torch.cat(all_probs).numpy()
+            all_targets = torch.cat(all_targets).numpy()
+
             # Compute precision, recall, F1 (threshold = 0.5)
-            preds = (val_outputs.sigmoid() > 0.5).float()
-            tp = (preds * y_val).sum().item()
-            fp = (preds * (1 - y_val)).sum().item()
-            fn = ((1 - preds) * y_val).sum().item()
+            preds = (all_probs > 0.5).astype(np.float32)
+            tp = float(((preds == 1) & (all_targets == 1)).sum())
+            fp = float(((preds == 1) & (all_targets == 0)).sum())
+            fn = float(((preds == 0) & (all_targets == 1)).sum())
 
             precision = tp / (tp + fp + 1e-8)
             recall = tp / (tp + fn + 1e-8)
             f1 = 2 * precision * recall / (precision + recall + 1e-8)
 
-            # ROC-AUC (flattened)
-            probs = val_outputs.sigmoid().detach().cpu().flatten().numpy()
-            targets = y_val.detach().cpu().flatten().numpy()
+            # ROC-AUC over full validation set
             try:
-                roc_auc = roc_auc_score(targets, probs)
+                roc_auc = roc_auc_score(all_targets, all_probs)
             except ValueError:
-                roc_auc = float('nan')
-            mlflow.log_metric("roc_auc", roc_auc, step=epoch + 1)
+                roc_auc = float("nan")
 
             mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
             mlflow.log_metric("precision", precision, step=epoch + 1)
             mlflow.log_metric("recall", recall, step=epoch + 1)
             mlflow.log_metric("f1_score", f1, step=epoch + 1)
+            mlflow.log_metric("roc_auc", roc_auc, step=epoch + 1)
+
             model.train()
 
         # Save the model weights only
