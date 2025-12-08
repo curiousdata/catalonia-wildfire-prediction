@@ -144,7 +144,8 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        pos_weight = torch.tensor([10.0], device=device)
+        pos_weight = 30.0
+        pos_weight = torch.tensor([pos_weight], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         # Derive a classification threshold consistent with positive weighting:
         # t* ≈ 1 / (1 + pos_weight)
