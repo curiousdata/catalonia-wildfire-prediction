@@ -36,18 +36,20 @@ if __name__ == '__main__':
         ZARR_PATH = project_root / "data" / "silver" / "IberFire_time1_xyfull.zarr"
         mlflow.log_param("zarr_path", str(ZARR_PATH))
 
-        train_time_start = "2015-01-01"
+        train_time_start = "2010-01-01"
         train_time_end = "2020-12-31"
         val_time_start = "2021-01-01"
         val_time_end = "2021-12-31"
-        spatial_downsample = 4
+        spatial_downsample = 3
         lead_time = 0
+        batch_size = 2
         mlflow.log_param("train_time_start", train_time_start)
         mlflow.log_param("train_time_end", train_time_end)
         mlflow.log_param("val_time_start", val_time_start)
         mlflow.log_param("val_time_end", val_time_end)
         mlflow.log_param("spatial_downsample", spatial_downsample)
         mlflow.log_param("lead_time", lead_time)
+        mlflow.log_param("batch_size", batch_size)
 
         feature_vars = [
             "wind_speed_mean",
@@ -90,7 +92,7 @@ if __name__ == '__main__':
 
         train_loader = DataLoader(
             train_ds,
-            batch_size=1,
+            batch_size=batch_size,
             shuffle=True,
             num_workers=0,
             pin_memory=False,
@@ -118,7 +120,7 @@ if __name__ == '__main__':
 
         test_loader = DataLoader(
             test_ds,
-            batch_size=1,
+            batch_size=batch_size,
             shuffle=False,
             num_workers=0,
             pin_memory=False,
