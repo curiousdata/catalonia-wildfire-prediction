@@ -27,6 +27,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     model_name = args.model_name
+    # Ensure we have a consistent local filename with .pth extension
+    if model_name.endswith(".pth"):
+        model_file_name = model_name
+        model_name = model_name[:-4]  # logical name without extension
+    else:
+        model_file_name = model_name + ".pth"
 
     mlflow.set_experiment("iberfire_unet_experiments")
     with mlflow.start_run(run_name=model_name):
@@ -140,9 +146,14 @@ if __name__ == '__main__':
         model = model.to(device)
         pos_weight = torch.tensor([10.0], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        # Derive a classification threshold consistent with positive weighting:
+        # t* ≈ 1 / (1 + pos_weight)
+        metric_threshold = 1.0 / (1.0 + float(pos_weight.item()))
+        mlflow.log_param("pos_weight", float(pos_weight.item()))
+        mlflow.log_param("metric_threshold", metric_threshold)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-        checkpoint_path = project_root / "models" / model_name
+        checkpoint_path = project_root / "models" / model_file_name
 
         if checkpoint_path.exists():
             print(f"Loading existing model from {checkpoint_path}")
@@ -218,8 +229,8 @@ if __name__ == '__main__':
             all_probs = torch.cat(all_probs).numpy()
             all_targets = torch.cat(all_targets).numpy()
 
-            # Compute precision, recall, F1 (threshold = 0.5)
-            preds = (all_probs > 0.5).astype(np.int32)
+            # Compute precision, recall, F1 using the derived threshold
+            preds = (all_probs > metric_threshold).astype(np.int32)
             tp = float(((preds == 1) & (all_targets == 1)).sum())
             fp = float(((preds == 1) & (all_targets == 0)).sum())
             fn = float(((preds == 0) & (all_targets == 1)).sum())
@@ -265,7 +276,7 @@ if __name__ == '__main__':
         input_example = sample_X.unsqueeze(0).to("cpu").float()
         mlflow.pytorch.log_model(
             model,
-            name="unet_model",
+            name=model_file_name,
             input_example=input_example,
         )
         total_duration = time.time() - overall_start
