@@ -157,31 +157,42 @@ if __name__ == '__main__':
             print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
             mlflow.log_metric("train_loss", train_loss, step= epoch + 1)
 
-            # Validation every 5 epochs
-            if (epoch + 1) % 5 == 0:
+            model.eval()
+            with torch.no_grad():
+                test_loss = 0.0
+                test_pbar = tqdm.tqdm(
+                    test_loader,
+                    desc="Validation",
+                    ncols=100,
+                    file=sys.stdout,
+                    dynamic_ncols=False,
+                )
+                for X_val, y_val in test_pbar:
+                    X_val = X_val.to(device).float()
+                    y_val = y_val.to(device).float()
+                    val_outputs = model(X_val)
+                    val_loss = criterion(val_outputs, y_val)
+                    test_loss += val_loss.item() * X_val.size(0)
+                    test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
 
-                model.eval()
-                with torch.no_grad():
-                    test_loss = 0.0
-                    test_pbar = tqdm.tqdm(
-                        test_loader,
-                        desc="Validation",
-                        ncols=100,
-                        file=sys.stdout,
-                        dynamic_ncols=False,
-                    )
-                    for X_val, y_val in test_pbar:
-                        X_val = X_val.to(device).float()
-                        y_val = y_val.to(device).float()
-                        val_outputs = model(X_val)
-                        val_loss = criterion(val_outputs, y_val)
-                        test_loss += val_loss.item() * X_val.size(0)
-                        test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
-            
-                test_loss /= len(test_loader.dataset)
-                print(f"Epoch { epoch + 1}: Test Loss: {test_loss:.4f}\n")
-                mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
-                model.train()
+            test_loss /= len(test_loader.dataset)
+
+            # Compute precision, recall, F1 (threshold = 0.5)
+            preds = (val_outputs.sigmoid() > 0.5).float()
+            tp = (preds * y_val).sum().item()
+            fp = (preds * (1 - y_val)).sum().item()
+            fn = ((1 - preds) * y_val).sum().item()
+
+            precision = tp / (tp + fp + 1e-8)
+            recall = tp / (tp + fn + 1e-8)
+            f1 = 2 * precision * recall / (precision + recall + 1e-8)
+
+            print(f"Epoch {epoch + 1}: Test Loss: {test_loss:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}\n")
+            mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
+            mlflow.log_metric("precision", precision, step=epoch + 1)
+            mlflow.log_metric("recall", recall, step=epoch + 1)
+            mlflow.log_metric("f1_score", f1, step=epoch + 1)
+            model.train()
 
         # Save the model weights only
         torch.save(model.state_dict(), checkpoint_path)
