@@ -277,7 +277,7 @@ if __name__ == '__main__':
         input_example = sample_X.unsqueeze(0).to("cpu").float()
         mlflow.pytorch.log_model(
             model,
-            name=model_file_name,
+            name=model_name,
             input_example=input_example,
         )
         total_duration = time.time() - overall_start
