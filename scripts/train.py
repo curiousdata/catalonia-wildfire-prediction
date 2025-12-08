@@ -208,7 +208,7 @@ if __name__ == '__main__':
             all_targets = torch.cat(all_targets).numpy()
 
             # Compute precision, recall, F1 (threshold = 0.5)
-            preds = (all_probs > 0.5).astype(np.float32)
+            preds = (all_probs > 0.5).astype(np.int32)
             tp = float(((preds == 1) & (all_targets == 1)).sum())
             fp = float(((preds == 1) & (all_targets == 0)).sum())
             fn = float(((preds == 0) & (all_targets == 1)).sum())
