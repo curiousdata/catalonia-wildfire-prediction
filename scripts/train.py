@@ -235,9 +235,12 @@ if __name__ == '__main__':
         torch.save(model.state_dict(), checkpoint_path)
 
         # Log the model to MLflow for traceability and later loading
+        # Use `name` (artifact_path is deprecated) and provide an input_example
+        input_example = sample_X.unsqueeze(0).to("cpu").float()
         mlflow.pytorch.log_model(
             model,
-            artifact_path="unet_model"
+            name="unet_model",
+            input_example=input_example,
         )
         total_duration = time.time() - overall_start
         print(f"Total training time: {total_duration:.2f} seconds")
