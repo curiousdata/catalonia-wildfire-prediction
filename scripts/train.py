@@ -213,9 +213,9 @@ if __name__ == '__main__':
             fp = float(((preds == 1) & (all_targets == 0)).sum())
             fn = float(((preds == 0) & (all_targets == 1)).sum())
 
-            precision = tp / (tp + fp + 1e-8)
-            recall = tp / (tp + fn + 1e-8)
-            f1 = 2 * precision * recall / (precision + recall + 1e-8)
+            precision = tp / (tp + fp) if (tp + fp) > 0 else float('nan')
+            recall = tp / (tp + fn) if (tp + fn) > 0 else float('nan')
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else float('nan')
 
             # ROC-AUC over full validation set
             try:
