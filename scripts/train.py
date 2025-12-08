@@ -36,10 +36,10 @@ if __name__ == '__main__':
         ZARR_PATH = project_root / "data" / "silver" / "IberFire_time1_xyfull.zarr"
         mlflow.log_param("zarr_path", str(ZARR_PATH))
 
-        train_time_start = "2010-01-01"
-        train_time_end = "2020-12-31"
-        val_time_start = "2021-01-01"
-        val_time_end = "2021-12-31"
+        train_time_start = "2008-01-01"
+        train_time_end = "2022-12-31"
+        val_time_start = "2023-01-01"
+        val_time_end = "2024-12-31"
         spatial_downsample = 3
         lead_time = 0
         batch_size = 2
