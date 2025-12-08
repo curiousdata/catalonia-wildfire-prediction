@@ -171,7 +171,7 @@ if __name__ == '__main__':
                 pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
             train_loss /= len(train_loader.dataset)
-            mlflow.log_metric("train_loss", train_loss, step= epoch + 1)
+            mlflow.log_metric("train_loss", train_loss, step=epoch + 1)
 
             model.eval()
             with torch.no_grad():
