@@ -4,6 +4,7 @@ import sys
 import os
 from pathlib import Path
 import mlflow
+from sklearn.metrics import roc_auc_score
 
 # Add project root to path BEFORE importing from src
 project_root = Path(__file__).resolve().parents[1]
@@ -154,7 +155,6 @@ if __name__ == '__main__':
                 pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
             train_loss /= len(train_loader.dataset)
-            print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}, Training Loss: {train_loss:.4f}")
             mlflow.log_metric("train_loss", train_loss, step= epoch + 1)
 
             model.eval()
@@ -187,7 +187,15 @@ if __name__ == '__main__':
             recall = tp / (tp + fn + 1e-8)
             f1 = 2 * precision * recall / (precision + recall + 1e-8)
 
-            print(f"Epoch {epoch + 1}: Test Loss: {test_loss:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}\n")
+            # ROC-AUC (flattened)
+            probs = val_outputs.sigmoid().detach().cpu().flatten().numpy()
+            targets = y_val.detach().cpu().flatten().numpy()
+            try:
+                roc_auc = roc_auc_score(targets, probs)
+            except ValueError:
+                roc_auc = float('nan')
+            mlflow.log_metric("roc_auc", roc_auc, step=epoch + 1)
+
             mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
             mlflow.log_metric("precision", precision, step=epoch + 1)
             mlflow.log_metric("recall", recall, step=epoch + 1)
