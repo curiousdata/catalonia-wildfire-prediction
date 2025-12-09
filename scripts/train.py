@@ -17,7 +17,41 @@ import segmentation_models_pytorch as smp
 import torch
 import tqdm
 from torch.utils.data import DataLoader
-from segmentation_models_pytorch.losses import FocalLoss
+import torch.nn as nn
+import torch.nn.functional as F
+
+class BinaryFocalLoss(nn.Module):
+    def __init__(self, alpha: float = 0.25, gamma: float = 2.0, reduction: str = "mean"):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """
+        Focal loss for binary classification with logits.
+
+        Args:
+            logits: raw model outputs (before sigmoid), shape (N, 1, H, W) or similar.
+            targets: binary targets in {0, 1}, same shape as logits.
+        """
+        # Ensure targets are float
+        targets = targets.type_as(logits)
+        # Binary cross entropy with logits, no reduction
+        bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
+        # Convert to p_t as in the focal loss paper
+        p_t = torch.exp(-bce)
+        focal_term = (1 - p_t) ** self.gamma
+        loss = self.alpha * focal_term * bce
+
+        if self.reduction == "mean":
+            return loss.mean()
+        elif self.reduction == "sum":
+            return loss.sum()
+        else:
+            return loss
+
+
 from src.data.datasets import SimpleIberFireSegmentationDataset
 
 
@@ -148,8 +182,8 @@ if __name__ == '__main__':
         #pos_weight = 30.0
         #pos_weight = torch.tensor([pos_weight], device=device)
         #criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        criterion = FocalLoss(mode='binary', alpha=0.25, gamma=2.0)
-        mlflow.log_param("criterion", "FocalLoss")
+        criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
+        mlflow.log_param("criterion", "BinaryFocalLoss")
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         checkpoint_path = project_root / "models" / model_file_name
