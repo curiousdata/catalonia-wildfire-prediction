@@ -136,7 +136,7 @@ if __name__ == '__main__':
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         model = smp.Unet(
-            encoder_name="mobilenet_v3",
+            encoder_name="mobilenet_v2",
             encoder_weights=None,
             in_channels=in_channels,
             classes=1,
@@ -149,11 +149,7 @@ if __name__ == '__main__':
         #pos_weight = torch.tensor([pos_weight], device=device)
         #criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         criterion = FocalLoss(mode='binary', alpha=0.25, gamma=2.0)
-        # Derive a classification threshold consistent with positive weighting:
-        # t* ≈ 1 / (1 + pos_weight)
-        metric_threshold = 0.5  # Using 0.5 as standard threshold for Focal Loss
         mlflow.log_param("criterion", "FocalLoss")
-        mlflow.log_param("metric_threshold", metric_threshold)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         checkpoint_path = project_root / "models" / model_file_name
@@ -232,26 +228,13 @@ if __name__ == '__main__':
             all_probs = torch.cat(all_probs).numpy()
             all_targets = torch.cat(all_targets).numpy()
 
-            # Compute precision, recall, F1 using the derived threshold
-            preds = (all_probs > metric_threshold).astype(np.int32)
-            tp = float(((preds == 1) & (all_targets == 1)).sum())
-            fp = float(((preds == 1) & (all_targets == 0)).sum())
-            fn = float(((preds == 0) & (all_targets == 1)).sum())
-
-            precision = tp / (tp + fp) if (tp + fp) > 0 else float('nan')
-            recall = tp / (tp + fn) if (tp + fn) > 0 else float('nan')
-            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else float('nan')
-
-            # ROC-AUC over full validation set
+            # ROC-AUC over full validation set (threshold-free)
             try:
                 roc_auc = roc_auc_score(all_targets, all_probs)
             except ValueError:
                 roc_auc = float("nan")
 
             mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
-            mlflow.log_metric("precision", precision, step=epoch + 1)
-            mlflow.log_metric("recall", recall, step=epoch + 1)
-            mlflow.log_metric("f1_score", f1, step=epoch + 1)
             mlflow.log_metric("roc_auc", roc_auc, step=epoch + 1)
 
             # Early stopping and best-model tracking based on validation loss
