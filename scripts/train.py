@@ -17,6 +17,7 @@ import segmentation_models_pytorch as smp
 import torch
 import tqdm
 from torch.utils.data import DataLoader
+from segmentation_models_pytorch.losses import FocalLoss
 from src.data.datasets import SimpleIberFireSegmentationDataset
 
 
@@ -135,7 +136,7 @@ if __name__ == '__main__':
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         model = smp.Unet(
-            encoder_name="mobilenet_v2",
+            encoder_name="mobilenet_v3",
             encoder_weights=None,
             in_channels=in_channels,
             classes=1,
@@ -144,13 +145,14 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        pos_weight = 30.0
-        pos_weight = torch.tensor([pos_weight], device=device)
-        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        #pos_weight = 30.0
+        #pos_weight = torch.tensor([pos_weight], device=device)
+        #criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        criterion = FocalLoss(mode='binary', alpha=0.25, gamma=2.0)
         # Derive a classification threshold consistent with positive weighting:
         # t* ≈ 1 / (1 + pos_weight)
-        metric_threshold = 1.0 / (1.0 + float(pos_weight.item()))
-        mlflow.log_param("pos_weight", float(pos_weight.item()))
+        metric_threshold = 0.5  # Using 0.5 as standard threshold for Focal Loss
+        mlflow.log_param("criterion", "FocalLoss")
         mlflow.log_param("metric_threshold", metric_threshold)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -273,8 +275,8 @@ if __name__ == '__main__':
         torch.save(model.state_dict(), checkpoint_path)
 
         # Log the model to MLflow for traceability and later loading
-        # Use `name` (artifact_path is deprecated) and provide an input_example
-        input_example = sample_X.unsqueeze(0).to("cpu").float()
+        # Use `name` (artifact_path is deprecated) and provide an input_example as a NumPy array
+        input_example = sample_X.unsqueeze(0).cpu().numpy().astype("float32")
         mlflow.pytorch.log_model(
             model,
             name=model_name,
