@@ -323,13 +323,23 @@ class SimpleIberFireSegmentationDataset(Dataset):
         stats: Optional[Dict[str, Dict[str, float]]] = None,
         compute_stats: bool = False,
         stats_path: Optional[str] = None,
+        mode: str = "all",
+        day_indices_path: Optional[str] = None,
+        balanced_ratio: float = 1.0,
+        seed: int = 42,
     ):
         self.zarr_path = Path(zarr_path)
         self.feature_vars = feature_vars
         self.label_var = label_var
         self.downsample = spatial_downsample
         self.lead_time = lead_time
+        self.mode = mode
+        self.balanced_ratio = balanced_ratio
+        self.seed = seed
         self.stats_path: Optional[Path] = Path(stats_path) if stats_path is not None else None
+        self.day_indices_path: Optional[Path] = (
+            Path(day_indices_path) if day_indices_path is not None else None
+        )
 
         print(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
         self.ds = xr.open_zarr(
@@ -356,6 +366,9 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         self.time_indices = all_indices
         print(f"[SimpleDataset] Total usable time steps: {len(self.time_indices)}")
+        # Optionally adjust the list of time indices based on fire/no-fire day information
+        self._apply_day_mode()
+        print(f"[SimpleDataset] Time steps after mode='{self.mode}': {len(self.time_indices)}")
 
         # Determine which variables are dynamic (have time dim) vs static (no time dim)
         self.dynamic_vars: List[str] = []
@@ -554,3 +567,84 @@ if __name__ == "__main__":
     print(f"  X_batch shape: {X_batch.shape}")
     print(f"  y_batch shape: {y_batch.shape}")
     print(f"  Fire tiles in batch: {y_batch.sum().item()}")
+    def _apply_day_mode(self) -> None:
+        """
+        Modify self.time_indices according to self.mode and an optional
+        precomputed fire/no-fire day index file.
+
+        Modes:
+            - "all": keep all time indices (no change)
+            - "fire_only": keep only days that have at least one fire pixel
+            - "balanced_days": keep all fire days plus a random sample of no-fire days
+        """
+        # If no mode requested or no day-index file provided, do nothing.
+        if self.mode == "all" or self.day_indices_path is None:
+            return
+
+        if not self.day_indices_path.exists():
+            print(
+                f"[SimpleDataset] Day index file not found at {self.day_indices_path}, "
+                f"mode='{self.mode}' will be ignored (using all time steps)."
+            )
+            return
+
+        import json
+
+        with self.day_indices_path.open("r") as f:
+            data = json.load(f)
+
+        fire_days_global = np.array(data.get("fire_days", []), dtype=int)
+        no_fire_days_global = np.array(data.get("no_fire_days", []), dtype=int)
+
+        if fire_days_global.size == 0 and self.mode in ("fire_only", "balanced_days"):
+            print(
+                "[SimpleDataset] No fire_days found in the index file; "
+                "mode will be ignored and all time steps will be used."
+            )
+            return
+
+        base_indices = np.array(self.time_indices, dtype=int)
+
+        # Intersect with the current time range (already filtered by dates and lead_time)
+        fire_in_range = np.intersect1d(base_indices, fire_days_global)
+        no_fire_in_range = np.intersect1d(base_indices, no_fire_days_global)
+
+        if self.mode == "fire_only":
+            if fire_in_range.size == 0:
+                raise ValueError(
+                    "Mode 'fire_only' selected, but no fire days found in the given time range."
+                )
+            self.time_indices = fire_in_range.tolist()
+            return
+
+        if self.mode == "balanced_days":
+            if fire_in_range.size == 0:
+                raise ValueError(
+                    "Mode 'balanced_days' selected, but no fire days found in the given time range."
+                )
+
+            n_fire = fire_in_range.size
+            n_no_fire_target = int(self.balanced_ratio * n_fire)
+
+            if no_fire_in_range.size == 0:
+                # Nothing to balance with; fall back to fire-only
+                chosen_no_fire = np.array([], dtype=int)
+            else:
+                rng = np.random.default_rng(self.seed)
+                n_no_fire_target = min(n_no_fire_target, no_fire_in_range.size)
+                chosen_no_fire = rng.choice(
+                    no_fire_in_range, size=n_no_fire_target, replace=False
+                )
+
+            combined = np.concatenate([fire_in_range, chosen_no_fire])
+
+            # Shuffle combined indices to mix fire and no-fire days
+            rng = np.random.default_rng(self.seed)
+            combined = rng.permutation(combined)
+
+            self.time_indices = combined.tolist()
+            return
+
+        raise ValueError(
+            f"Unknown mode '{self.mode}'. Expected 'all', 'fire_only', or 'balanced_days'."
+        )
