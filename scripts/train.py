@@ -102,7 +102,7 @@ if __name__ == '__main__':
             "dist_to_railways_mean",
             "dist_to_roads_mean",
             "slope_mean",
-            "CLC_20",
+            "CLC_2018_forest_proportion",
             "FWI",
             "is_near_fire"
         ]
