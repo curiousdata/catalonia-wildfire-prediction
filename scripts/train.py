@@ -82,7 +82,7 @@ if __name__ == '__main__':
         val_time_start = "2023-01-01"
         val_time_end = "2024-12-31"
         spatial_downsample = 2
-        lead_time = 0
+        lead_time = 1
         batch_size = 2
         mlflow.log_param("train_time_start", train_time_start)
         mlflow.log_param("train_time_end", train_time_end)
@@ -102,8 +102,9 @@ if __name__ == '__main__':
             "dist_to_railways_mean",
             "dist_to_roads_mean",
             "slope_mean",
-            "CLC_2018_forest_proportion",
+            "CLC_20",
             "FWI",
+            "is_near_fire"
         ]
 
         in_channels = len(feature_vars)
@@ -125,7 +126,7 @@ if __name__ == '__main__':
             time_start=train_time_start,
             time_end=train_time_end,
             feature_vars=feature_vars,
-            label_var="is_near_fire",
+            label_var="is_fire",
             spatial_downsample=spatial_downsample,
             lead_time=lead_time,
             compute_stats=True,
@@ -153,7 +154,7 @@ if __name__ == '__main__':
             time_start=val_time_start,
             time_end=val_time_end,
             feature_vars=feature_vars,
-            label_var="is_near_fire",
+            label_var="is_fire",
             spatial_downsample=spatial_downsample,
             lead_time=lead_time,
             compute_stats=False,
