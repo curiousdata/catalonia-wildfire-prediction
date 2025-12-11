@@ -477,7 +477,8 @@ class SimpleIberFireSegmentationDataset(Dataset):
     def _apply_day_mode(self) -> None:
         """
         Modify self.time_indices according to self.mode and an optional
-        precomputed fire/no-fire day index file.
+        precomputed fire/no-fire day index file (indices are interpreted in
+        label-day space, i.e. days where the label at time t has fire/no fire).
 
         Modes:
             - "all": keep all time indices (no change)
@@ -512,9 +513,17 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         base_indices = np.array(self.time_indices, dtype=int)
 
-        # Intersect with the current time range (already filtered by dates and lead_time)
-        fire_in_range = np.intersect1d(base_indices, fire_days_global)
-        no_fire_in_range = np.intersect1d(base_indices, no_fire_days_global)
+        # Map feature-day indices (t) to their corresponding label-day indices (t + lead_time)
+        # The JSON file is assumed to store fire/no-fire indices in label-day space.
+        lead = int(getattr(self, "lead_time", 0))
+        label_indices_for_features = base_indices + lead
+
+        # A feature day is considered "fire" if its label day (t + lead_time) is in fire_days_global.
+        fire_mask = np.isin(label_indices_for_features, fire_days_global)
+        no_fire_mask = np.isin(label_indices_for_features, no_fire_days_global)
+
+        fire_in_range = base_indices[fire_mask]
+        no_fire_in_range = base_indices[no_fire_mask]
 
         if self.mode == "fire_only":
             if fire_in_range.size == 0:
