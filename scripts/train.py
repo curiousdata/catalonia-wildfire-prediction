@@ -200,11 +200,12 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        #pos_weight = 30.0
-        #pos_weight = torch.tensor([pos_weight], device=device)
-        #criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
-        mlflow.log_param("criterion", "BinaryFocalLoss")
+        pos_weight = 300.0
+        pos_weight = torch.tensor([pos_weight], device=device)
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        #criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
+        mlflow.log_param("criterion", "BCEWithLogitsLoss")
+        mlflow.log_param("pos_weight", pos_weight)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         checkpoint_path = project_root / "models" / model_file_name
