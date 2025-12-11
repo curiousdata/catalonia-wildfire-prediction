@@ -85,7 +85,7 @@ if __name__ == '__main__':
         val_time_end = "2024-12-31"
         spatial_downsample = 1
         lead_time = 1
-        batch_size = 2
+        batch_size = 4
         mlflow.log_param("train_time_start", train_time_start)
         mlflow.log_param("train_time_end", train_time_end)
         mlflow.log_param("val_time_start", val_time_start)
@@ -182,13 +182,13 @@ if __name__ == '__main__':
                 total_pixels += yb.numel()
             return total_pos, total_pixels, (total_pos / total_pixels if total_pixels > 0 else 0.0)
 
-        # train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
-        # val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
+        train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
+        val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
 
-        # print("=== SANITY CHECKS ===")
-        # print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
-        # print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
-        # print("======================")
+        print("=== SANITY CHECKS ===")
+        print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
+        print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
+        print("======================")
 
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -202,7 +202,7 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        pos_weight = 100.0
+        pos_weight = 500.0
         pos_weight = torch.tensor([pos_weight], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         #criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
