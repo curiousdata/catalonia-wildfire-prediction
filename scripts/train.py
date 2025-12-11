@@ -202,7 +202,7 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        pos_weight = 500.0
+        pos_weight = 50000.0
         pos_weight = torch.tensor([pos_weight], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         #criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
