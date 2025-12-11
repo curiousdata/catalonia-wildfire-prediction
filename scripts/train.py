@@ -95,18 +95,128 @@ if __name__ == '__main__':
         mlflow.log_param("batch_size", batch_size)
 
         feature_vars = [
-            "wind_speed_mean",
-            "t2m_mean",
-            "RH_mean",
-            "total_precipitation_mean",
-            "is_holiday",
-            "popdens_2020",
-            "dist_to_railways_mean",
-            "dist_to_roads_mean",
-            "slope_mean",
-            "CLC_2018_forest_proportion",
+            # Dynamic features (time-dependent)
+            "FAPAR",
             "FWI",
-            "is_near_fire"
+            "LAI",
+            "LST",
+            "NDVI",
+            "RH_max",
+            "RH_mean",
+            "RH_min",
+            "RH_range",
+            "SWI_001",
+            "SWI_005",
+            "SWI_010",
+            "SWI_020",
+            "is_holiday",
+            "is_near_fire",
+            "surface_pressure_max",
+            "surface_pressure_mean",
+            "surface_pressure_min",
+            "surface_pressure_range",
+            "t2m_max",
+            "t2m_mean",
+            "t2m_min",
+            "t2m_range",
+            "total_precipitation_mean",
+            "wind_direction_at_max_speed",
+            "wind_direction_mean",
+            "wind_speed_max",
+            "wind_speed_mean",
+            # CLC Level-3 classes (year-aware bases)
+            "CLC_1",
+            "CLC_2",
+            "CLC_3",
+            "CLC_4",
+            "CLC_5",
+            "CLC_6",
+            "CLC_7",
+            "CLC_8",
+            "CLC_9",
+            "CLC_10",
+            "CLC_11",
+            "CLC_12",
+            "CLC_13",
+            "CLC_14",
+            "CLC_15",
+            "CLC_16",
+            "CLC_17",
+            "CLC_18",
+            "CLC_19",
+            "CLC_20",
+            "CLC_21",
+            "CLC_22",
+            "CLC_23",
+            "CLC_24",
+            "CLC_25",
+            "CLC_26",
+            "CLC_27",
+            "CLC_28",
+            "CLC_29",
+            "CLC_30",
+            "CLC_31",
+            "CLC_32",
+            "CLC_33",
+            "CLC_34",
+            "CLC_35",
+            "CLC_36",
+            "CLC_37",
+            "CLC_38",
+            "CLC_39",
+            "CLC_40",
+            "CLC_41",
+            "CLC_42",
+            "CLC_43",
+            "CLC_44",
+            # CLC aggregated proportions (year-aware bases)
+            "CLC_agricultural_proportion",
+            "CLC_arable_land_proportion",
+            "CLC_artificial_proportion",
+            "CLC_artificial_vegetation_proportion",
+            "CLC_forest_and_semi_natural_proportion",
+            "CLC_forest_proportion",
+            "CLC_heterogeneous_agriculture_proportion",
+            "CLC_industrial_proportion",
+            "CLC_inland_waters_proportion",
+            "CLC_inland_wetlands_proportion",
+            "CLC_marine_waters_proportion",
+            "CLC_maritime_wetlands_proportion",
+            "CLC_mine_proportion",
+            "CLC_open_space_proportion",
+            "CLC_permanent_crops_proportion",
+            "CLC_scrub_proportion",
+            "CLC_urban_fabric_proportion",
+            "CLC_waterbody_proportion",
+            "CLC_wetlands_proportion",
+            # Other static features
+            "aspect_1",
+            "aspect_2",
+            "aspect_3",
+            "aspect_4",
+            "aspect_5",
+            "aspect_6",
+            "aspect_7",
+            "aspect_8",
+            "aspect_NODATA",
+            "dist_to_railways_mean",
+            "dist_to_railways_stdev",
+            "dist_to_roads_mean",
+            "dist_to_roads_stdev",
+            "dist_to_waterways_mean",
+            "dist_to_waterways_stdev",
+            "elevation_mean",
+            "elevation_stdev",
+            "is_natura2000",
+            "is_sea",
+            "is_spain",
+            "is_waterbody",
+            "roughness_mean",
+            "roughness_stdev",
+            "slope_mean",
+            "slope_stdev",
+            # Year-aware population density (popdens_YYYY family)
+            "popdens",
         ]
 
         in_channels = len(feature_vars)
@@ -174,21 +284,21 @@ if __name__ == '__main__':
         # ==========================
         # Sanity checks: positive ratios
         # ==========================
-        def compute_pos_ratio(loader):
-            total_pos = 0
-            total_pixels = 0
-            for _, yb in loader:
-                total_pos += yb.sum().item()
-                total_pixels += yb.numel()
-            return total_pos, total_pixels, (total_pos / total_pixels if total_pixels > 0 else 0.0)
+        # def compute_pos_ratio(loader):
+        #     total_pos = 0
+        #     total_pixels = 0
+        #     for _, yb in loader:
+        #         total_pos += yb.sum().item()
+        #         total_pixels += yb.numel()
+        #     return total_pos, total_pixels, (total_pos / total_pixels if total_pixels > 0 else 0.0)
 
-        train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
-        val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
+        # train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
+        # val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
 
-        print("=== SANITY CHECKS ===")
-        print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
-        print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
-        print("======================")
+        # print("=== SANITY CHECKS ===")
+        # print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
+        # print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
+        # print("======================")
 
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
