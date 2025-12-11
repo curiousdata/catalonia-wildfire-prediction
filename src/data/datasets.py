@@ -73,7 +73,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         ...     time_end="2020-12-31",
         ...     feature_vars=["wind_speed_mean", "t2m_mean", "RH_mean"],
         ...     label_var="is_near_fire",
-        ...     spatial_downsample=4,
+        ...     spatial_downsample=1,
         ...     lead_time=1,  # predict tomorrow's fire heatmap
         ...     compute_stats=True,
         ... )
@@ -86,7 +86,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         time_end: str,
         feature_vars: List[str],
         label_var: str,
-        spatial_downsample: int = 4,
+        spatial_downsample: int = 1,
         lead_time: int = 1,
         stats: Optional[Dict[str, Dict[str, float]]] = None,
         compute_stats: bool = False,
@@ -101,6 +101,12 @@ class SimpleIberFireSegmentationDataset(Dataset):
         self.label_var = label_var
         self.downsample = spatial_downsample
         self.lead_time = lead_time
+        if self.downsample != 1:
+            raise ValueError(
+                "SimpleIberFireSegmentationDataset expects spatial_downsample=1 "
+                "when using the coarsened Zarr. Further pooling should be handled "
+                "in a separate dataset variant."
+            )
         self.mode = mode
         self.balanced_ratio = balanced_ratio
         self.seed = seed
@@ -150,10 +156,10 @@ class SimpleIberFireSegmentationDataset(Dataset):
         print(f"[SimpleDataset] Dynamic vars (time-dependent): {self.dynamic_vars}")
         print(f"[SimpleDataset] Static vars (no time dimension, broadcast in time): {self.static_vars}")
 
-        # Cache static variables in memory (downsampled) to avoid repeated disk reads
+        # Cache static variables in memory to avoid repeated disk reads
         self.static_cache: Dict[str, np.ndarray] = {}
         for v in self.static_vars:
-            arr = self.root[v][::self.downsample, ::self.downsample].astype("float32")
+            arr = self.root[v][:, :].astype("float32")
             self.static_cache[v] = arr
             print(
                 f"[SimpleDataset] Cached static var '{v}' with shape {arr.shape} "
@@ -224,7 +230,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             if v in self.dynamic_vars:
                 # Time-varying variable: sample across time
                 for idx in sample_indices:
-                    arr = self.root[v][idx, ::self.downsample, ::self.downsample]
+                    arr = self.root[v][idx, :, :]
                     data_list.append(arr.ravel())
             else:
                 # Static variable: no time dimension, reuse cached array
@@ -350,11 +356,10 @@ class SimpleIberFireSegmentationDataset(Dataset):
         X_arrays = []
         for i, v in enumerate(self.feature_vars):
             if v in self.dynamic_vars:
-                # Dynamic variable: read full-resolution slice and apply mean pooling
+                # Dynamic variable: read slice directly from coarsened Zarr
                 arr = self.root[v][t, :, :]
-                arr = mean_pool_np(arr, self.downsample)
             else:
-                # Static variable: reuse cached downsampled array
+                # Static variable: reuse cached array
                 arr = self.static_cache[v]
             mean = self._means[i]
             std = self._stds[i]
@@ -363,9 +368,8 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         X = np.stack(X_arrays, axis=0).astype("float32")  # [C, H, W]
 
-        # Load label at t + lead_time from raw Zarr and apply max pooling
+        # Load label at t + lead_time directly from coarsened Zarr
         y = self.root[self.label_var][t_label, :, :]
-        y = max_pool_np(y, self.downsample)
         y_bin = (y > 0.5).astype("float32")[np.newaxis, ...]  # [1, H, W]
 
         return torch.from_numpy(X), torch.from_numpy(y_bin)

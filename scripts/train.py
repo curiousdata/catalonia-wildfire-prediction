@@ -74,14 +74,16 @@ if __name__ == '__main__':
 
         mlflow.log_param("model_name", model_name)
 
-        ZARR_PATH = project_root / "data" / "silver" / "IberFire_time1_xyfull.zarr"
+        ZARR_PATH = project_root / "data" / "gold" / "IberFire_coarse8_time1.zarr"
+
         mlflow.log_param("zarr_path", str(ZARR_PATH))
+        mlflow.log_param("coarsen_factor", 8)
 
         train_time_start = "2008-01-01"
         train_time_end = "2022-12-31"
         val_time_start = "2023-01-01"
         val_time_end = "2024-12-31"
-        spatial_downsample = 2
+        spatial_downsample = 1
         lead_time = 1
         batch_size = 2
         mlflow.log_param("train_time_start", train_time_start)
@@ -200,7 +202,7 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        pos_weight = 300.0
+        pos_weight = 100.0
         pos_weight = torch.tensor([pos_weight], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         #criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
