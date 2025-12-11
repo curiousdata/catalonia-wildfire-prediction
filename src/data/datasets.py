@@ -124,6 +124,13 @@ class SimpleIberFireSegmentationDataset(Dataset):
         )
         # Also open raw Zarr root for fast array access in __getitem__
         self.root = zarr.open(str(self.zarr_path), mode="r")
+        # Precompute calendar year for each global time index
+        time_da = self.ds["time"]
+        try:
+            self._years_all = time_da.dt.year.values.astype(int)
+        except Exception:
+            time_vals = time_da.values
+            self._years_all = np.array([int(str(v)[:4]) for v in time_vals], dtype=int)
 
         print(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
         time = self.ds["time"].values  # this is datetime64 already
@@ -144,17 +151,79 @@ class SimpleIberFireSegmentationDataset(Dataset):
         self._apply_day_mode()
         print(f"[SimpleDataset] Time steps after mode='{self.mode}': {len(self.time_indices)}")
 
-        # Determine which variables are dynamic (have time dim) vs static (no time dim)
+        # Determine which variables are dynamic (have time dim),
+        # which are simple static (no time dim),
+        # and which are year-aware static bases (CLC_* or popdens).
         self.dynamic_vars: List[str] = []
         self.static_vars: List[str] = []
+        self.clc_base_vars: List[str] = []
+        self.clc_mapping: Dict[str, Dict[int, str]] = {}
+        self.popdens_base_vars: List[str] = []
+        self.popdens_mapping: Dict[str, Dict[int, str]] = {}
+
+        data_var_names = set(self.ds.data_vars)
+
         for v in self.feature_vars:
-            da = self.ds[v]
-            if "time" in da.dims:
-                self.dynamic_vars.append(v)
-            else:
-                self.static_vars.append(v)
+            # Case 1: feature name directly matches a data variable
+            if v in data_var_names:
+                da = self.ds[v]
+                if "time" in da.dims:
+                    self.dynamic_vars.append(v)
+                else:
+                    self.static_vars.append(v)
+                continue
+
+            # Case 2: CLC base feature, e.g. "CLC_1" or "CLC_forest_proportion"
+            if v.startswith("CLC_"):
+                base_suffix = v[len("CLC_") :]
+                year_map: Dict[int, str] = {}
+                for year in (2006, 2012, 2018):
+                    candidate = f"CLC_{year}_{base_suffix}"
+                    if candidate in data_var_names:
+                        year_map[year] = candidate
+                if not year_map:
+                    raise KeyError(
+                        f"[SimpleDataset] CLC base feature '{v}' could not be resolved "
+                        f"to any of CLC_2006_{base_suffix}, CLC_2012_{base_suffix}, CLC_2018_{base_suffix}."
+                    )
+                self.clc_base_vars.append(v)
+                self.clc_mapping[v] = year_map
+                continue
+
+            # Case 3: popdens base feature, e.g. "popdens" → popdens_2008..popdens_2020
+            if v == "popdens":
+                year_map: Dict[int, str] = {}
+                for name in data_var_names:
+                    if name.startswith("popdens_"):
+                        parts = name.split("_")
+                        if len(parts) != 2:
+                            continue
+                        try:
+                            year = int(parts[1])
+                        except ValueError:
+                            continue
+                        year_map[year] = name
+                if not year_map:
+                    raise KeyError(
+                        "[SimpleDataset] popdens base feature requested, "
+                        "but no popdens_YYYY variables found in dataset."
+                    )
+                self.popdens_base_vars.append(v)
+                self.popdens_mapping[v] = year_map
+                continue
+
+            # Case 4: unknown feature name
+            raise KeyError(
+                f"[SimpleDataset] Feature '{v}' not found in dataset variables "
+                f"and not recognized as CLC or popdens base."
+            )
+
         print(f"[SimpleDataset] Dynamic vars (time-dependent): {self.dynamic_vars}")
         print(f"[SimpleDataset] Static vars (no time dimension, broadcast in time): {self.static_vars}")
+        if self.clc_base_vars:
+            print(f"[SimpleDataset] CLC base vars (year-aware static): {self.clc_base_vars}")
+        if self.popdens_base_vars:
+            print(f"[SimpleDataset] popdens base vars (year-aware static): {self.popdens_base_vars}")
 
         # Cache static variables in memory to avoid repeated disk reads
         self.static_cache: Dict[str, np.ndarray] = {}
@@ -165,6 +234,32 @@ class SimpleIberFireSegmentationDataset(Dataset):
                 f"[SimpleDataset] Cached static var '{v}' with shape {arr.shape} "
                 f"and dtype {arr.dtype}"
             )
+
+        # Cache CLC year-specific maps for each CLC base feature
+        self.clc_cache: Dict[str, Dict[int, np.ndarray]] = {}
+        for base_name, year_map in self.clc_mapping.items():
+            year_cache: Dict[int, np.ndarray] = {}
+            for year, varname in year_map.items():
+                arr = self.root[varname][:, :].astype("float32")
+                year_cache[year] = arr
+                print(
+                    f"[SimpleDataset] Cached CLC var '{varname}' for base '{base_name}' "
+                    f"with shape {arr.shape} and dtype {arr.dtype}"
+                )
+            self.clc_cache[base_name] = year_cache
+
+        # Cache popdens year-specific maps for each popdens base feature
+        self.popdens_cache: Dict[str, Dict[int, np.ndarray]] = {}
+        for base_name, year_map in self.popdens_mapping.items():
+            year_cache: Dict[int, np.ndarray] = {}
+            for year, varname in year_map.items():
+                arr = self.root[varname][:, :].astype("float32")
+                year_cache[year] = arr
+                print(
+                    f"[SimpleDataset] Cached popdens var '{varname}' for base '{base_name}' "
+                    f"with shape {arr.shape} and dtype {arr.dtype}"
+                )
+            self.popdens_cache[base_name] = year_cache
 
         # Load or compute normalization stats
         if stats is not None:
@@ -232,10 +327,23 @@ class SimpleIberFireSegmentationDataset(Dataset):
                 for idx in sample_indices:
                     arr = self.root[v][idx, :, :]
                     data_list.append(arr.ravel())
-            else:
-                # Static variable: no time dimension, reuse cached array
+            elif v in self.static_vars:
+                # Simple static variable: no time dimension, reuse cached array
                 arr = self.static_cache[v]
                 data_list.append(arr.ravel())
+            elif v in getattr(self, "clc_base_vars", []):
+                # CLC base variable: combine all available yearly maps
+                for year, arr in self.clc_cache[v].items():
+                    data_list.append(arr.ravel())
+            elif v in getattr(self, "popdens_base_vars", []):
+                # popdens base variable: combine all yearly population maps
+                for year, arr in self.popdens_cache[v].items():
+                    data_list.append(arr.ravel())
+            else:
+                raise KeyError(
+                    f"[SimpleDataset] Variable '{v}' not classified as dynamic, static, CLC base, or popdens base."
+                )
+
             data = np.concatenate(data_list)
 
             mean = float(np.nanmean(data))
@@ -358,9 +466,40 @@ class SimpleIberFireSegmentationDataset(Dataset):
             if v in self.dynamic_vars:
                 # Dynamic variable: read slice directly from coarsened Zarr
                 arr = self.root[v][t, :, :]
-            else:
-                # Static variable: reuse cached array
+            elif v in self.static_vars:
+                # Simple static variable: reuse cached array
                 arr = self.static_cache[v]
+            elif v in getattr(self, "clc_base_vars", []):
+                # CLC base variable: choose appropriate year's map based on calendar year
+                year = int(self._years_all[t])
+                if year <= 2011:
+                    chosen_year = 2006
+                elif year <= 2017:
+                    chosen_year = 2012
+                else:
+                    chosen_year = 2018
+                year_cache = self.clc_cache[v]
+                if chosen_year not in year_cache:
+                    # Fallback: pick the nearest available year
+                    available_years = sorted(year_cache.keys())
+                    chosen_year = min(available_years, key=lambda yy: abs(yy - year))
+                arr = year_cache[chosen_year]
+            elif v in getattr(self, "popdens_base_vars", []):
+                # popdens base variable: choose yearly map closest to sample year
+                year = int(self._years_all[t])
+                year_cache = self.popdens_cache[v]
+                available_years = sorted(year_cache.keys())
+                if year in year_cache:
+                    chosen_year = year
+                else:
+                    # Pick the nearest available year (e.g. 2021/2022 -> 2020)
+                    chosen_year = min(available_years, key=lambda yy: abs(yy - year))
+                arr = year_cache[chosen_year]
+            else:
+                raise KeyError(
+                    f"[SimpleDataset] Feature '{v}' not found among dynamic, static, CLC base, or popdens base variables."
+                )
+
             mean = self._means[i]
             std = self._stds[i]
             arr = (arr - mean) / std
