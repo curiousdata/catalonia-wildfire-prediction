@@ -5,7 +5,43 @@ from torch.utils.data import Dataset
 from pathlib import Path
 import json
 from typing import List, Dict, Literal, Optional
+
 import xarray as xr
+
+
+# --- NumPy pooling helpers ---
+def max_pool_np(arr: np.ndarray, k: int) -> np.ndarray:
+    """
+    Block max pooling for a 2D array with factor k.
+    If k <= 1, returns the input array unchanged.
+    """
+    if k <= 1:
+        return arr
+    H, W = arr.shape
+    Hk, Wk = H // k, W // k
+    if Hk == 0 or Wk == 0:
+        return arr
+    arr_trim = arr[: Hk * k, : Wk * k]
+    arr_reshaped = arr_trim.reshape(Hk, k, Wk, k)
+    pooled = arr_reshaped.max(axis=(1, 3))
+    return pooled
+
+
+def mean_pool_np(arr: np.ndarray, k: int) -> np.ndarray:
+    """
+    Block mean pooling for a 2D array with factor k.
+    If k <= 1, returns the input array unchanged.
+    """
+    if k <= 1:
+        return arr
+    H, W = arr.shape
+    Hk, Wk = H // k, W // k
+    if Hk == 0 or Wk == 0:
+        return arr
+    arr_trim = arr[: Hk * k, : Wk * k]
+    arr_reshaped = arr_trim.reshape(Hk, k, Wk, k)
+    pooled = arr_reshaped.mean(axis=(1, 3))
+    return pooled
 
 
 # class CNNIberFireDataset(Dataset):
@@ -582,8 +618,9 @@ class SimpleIberFireSegmentationDataset(Dataset):
         X_arrays = []
         for i, v in enumerate(self.feature_vars):
             if v in self.dynamic_vars:
-                # Read from raw Zarr array: (time, y, x)
-                arr = self.root[v][t, ::self.downsample, ::self.downsample]
+                # Dynamic variable: read full-resolution slice and apply mean pooling
+                arr = self.root[v][t, :, :]
+                arr = mean_pool_np(arr, self.downsample)
             else:
                 # Static variable: reuse cached downsampled array
                 arr = self.static_cache[v]
@@ -594,8 +631,9 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         X = np.stack(X_arrays, axis=0).astype("float32")  # [C, H, W]
 
-        # Load label at t + lead_time from raw Zarr
-        y = self.root[self.label_var][t_label, ::self.downsample, ::self.downsample]
+        # Load label at t + lead_time from raw Zarr and apply max pooling
+        y = self.root[self.label_var][t_label, :, :]
+        y = max_pool_np(y, self.downsample)
         y_bin = (y > 0.5).astype("float32")[np.newaxis, ...]  # [1, H, W]
 
         return torch.from_numpy(X), torch.from_numpy(y_bin)
