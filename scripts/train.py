@@ -302,7 +302,6 @@ if __name__ == '__main__':
         model_cpu = model.to("cpu").eval()
 
         # Log the model to MLflow for traceability and later loading
-        # Use `name` (artifact_path is deprecated) and provide an input_example as a NumPy array
         input_example = sample_X.unsqueeze(0).cpu().numpy().astype("float32")
         mlflow.pytorch.log_model(
             model_cpu,
@@ -310,7 +309,6 @@ if __name__ == '__main__':
             input_example=input_example,
         )
         total_duration = time.time() - overall_start
-        # `epoch` will be the last epoch index reached (0-based) if the loop ran at least once
         epochs_ran = (epoch + 1) if "epoch" in locals() else 0
         avg_time = total_duration / epochs_ran if epochs_ran > 0 else 0.0
         print(f"Total training time: {total_duration:.2f} seconds")
