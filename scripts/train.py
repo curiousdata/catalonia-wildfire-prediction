@@ -169,6 +169,25 @@ if __name__ == '__main__':
             pin_memory=False,
         )
 
+        # ==========================
+        # Sanity checks: positive ratios
+        # ==========================
+        def compute_pos_ratio(loader):
+            total_pos = 0
+            total_pixels = 0
+            for _, yb in loader:
+                total_pos += yb.sum().item()
+                total_pixels += yb.numel()
+            return total_pos, total_pixels, (total_pos / total_pixels if total_pixels > 0 else 0.0)
+
+        train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
+        val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
+
+        print("=== SANITY CHECKS ===")
+        print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
+        print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
+        print("======================")
+
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         model = smp.Unet(
