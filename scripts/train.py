@@ -81,7 +81,7 @@ if __name__ == '__main__':
         train_time_end = "2022-12-31"
         val_time_start = "2023-01-01"
         val_time_end = "2024-12-31"
-        spatial_downsample = 2
+        spatial_downsample = 1
         lead_time = 1
         batch_size = 2
         mlflow.log_param("train_time_start", train_time_start)
