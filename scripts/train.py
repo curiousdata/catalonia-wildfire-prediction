@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import mlflow
 import mlflow.pytorch
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, average_precision_score
 import numpy as np
 
 # Add project root to path BEFORE importing from src
@@ -234,14 +234,19 @@ if __name__ == '__main__':
 
             train_loss /= len(train_loader.dataset)
             mlflow.log_metric("train_loss", train_loss, step=epoch + 1)
-            # Compute train ROC-AUC
+            # Compute train ROC-AUC and PR-AUC (threshold-free)
             train_probs = torch.cat(train_probs).numpy()
             train_targets = torch.cat(train_targets).numpy()
             try:
                 train_roc_auc = roc_auc_score(train_targets, train_probs)
             except ValueError:
                 train_roc_auc = float("nan")
+            try:
+                train_pr_auc = average_precision_score(train_targets, train_probs)
+            except ValueError:
+                train_pr_auc = float("nan")
             mlflow.log_metric("train_roc_auc", train_roc_auc, step=epoch + 1)
+            mlflow.log_metric("train_pr_auc", train_pr_auc, step=epoch + 1)
 
             model.eval()
             with torch.no_grad():
@@ -277,14 +282,19 @@ if __name__ == '__main__':
             all_probs = torch.cat(all_probs).numpy()
             all_targets = torch.cat(all_targets).numpy()
 
-            # ROC-AUC over full validation set (threshold-free)
+            # ROC-AUC and PR-AUC over full validation set (threshold-free)
             try:
                 roc_auc = roc_auc_score(all_targets, all_probs)
             except ValueError:
                 roc_auc = float("nan")
+            try:
+                pr_auc = average_precision_score(all_targets, all_probs)
+            except ValueError:
+                pr_auc = float("nan")
 
             mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
             mlflow.log_metric("validation_roc_auc", roc_auc, step=epoch + 1)
+            mlflow.log_metric("validation_pr_auc", pr_auc, step=epoch + 1)
 
             # Early stopping and best-model tracking based on validation loss
             if test_loss < best_val_loss - 1e-4:
