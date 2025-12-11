@@ -316,11 +316,14 @@ if __name__ == '__main__':
         # Save the model weights locally for resume training
         torch.save(model.state_dict(), checkpoint_path)
 
+        # Move model to CPU for MLflow logging and signature inference
+        model_cpu = model.to("cpu").eval()
+
         # Log the model to MLflow for traceability and later loading
         # Use `name` (artifact_path is deprecated) and provide an input_example as a NumPy array
         input_example = sample_X.unsqueeze(0).cpu().numpy().astype("float32")
         mlflow.pytorch.log_model(
-            model,
+            model_cpu,
             name=model_name,
             input_example=input_example,
         )
