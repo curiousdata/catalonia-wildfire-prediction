@@ -207,8 +207,6 @@ if __name__ == '__main__':
         best_model_state = None
         for epoch in range(NUM_EPOCHS):
             train_loss = 0.0
-            train_probs = []
-            train_targets = []
             pbar = tqdm.tqdm(
                 train_loader,
                 desc=f"Epoch: {epoch + 1}/{NUM_EPOCHS}",
@@ -222,9 +220,6 @@ if __name__ == '__main__':
 
                 optimizer.zero_grad()
                 outputs = model(X_batch)
-                # collect train probabilities and targets for train ROC-AUC
-                train_probs.append(torch.sigmoid(outputs).detach().cpu().view(-1))
-                train_targets.append(y_batch.detach().cpu().view(-1))
                 loss = criterion(outputs, y_batch)
                 loss.backward()
                 optimizer.step()
@@ -234,19 +229,6 @@ if __name__ == '__main__':
 
             train_loss /= len(train_loader.dataset)
             mlflow.log_metric("train_loss", train_loss, step=epoch + 1)
-            # Compute train ROC-AUC and PR-AUC (threshold-free)
-            train_probs = torch.cat(train_probs).numpy()
-            train_targets = torch.cat(train_targets).numpy()
-            try:
-                train_roc_auc = roc_auc_score(train_targets, train_probs)
-            except ValueError:
-                train_roc_auc = float("nan")
-            try:
-                train_pr_auc = average_precision_score(train_targets, train_probs)
-            except ValueError:
-                train_pr_auc = float("nan")
-            mlflow.log_metric("train_roc_auc", train_roc_auc, step=epoch + 1)
-            mlflow.log_metric("train_pr_auc", train_pr_auc, step=epoch + 1)
 
             model.eval()
             with torch.no_grad():
