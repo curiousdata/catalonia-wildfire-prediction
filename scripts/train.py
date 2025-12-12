@@ -74,10 +74,10 @@ if __name__ == '__main__':
 
         mlflow.log_param("model_name", model_name)
 
-        ZARR_PATH = project_root / "data" / "gold" / "IberFire_coarse8_time1.zarr"
+        ZARR_PATH = project_root / "data" / "gold" / "IberFire_coarse32_time1.zarr"
 
         mlflow.log_param("zarr_path", str(ZARR_PATH))
-        mlflow.log_param("coarsen_factor", 8)
+        mlflow.log_param("coarsen_factor", 32)
 
         train_time_start = "2008-01-01"
         train_time_end = "2022-12-31"
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         val_time_end = "2024-12-31"
         spatial_downsample = 1
         lead_time = 1
-        batch_size = 4
+        batch_size = 8
         mlflow.log_param("train_time_start", train_time_start)
         mlflow.log_param("train_time_end", train_time_end)
         mlflow.log_param("val_time_start", val_time_start)
@@ -226,8 +226,8 @@ if __name__ == '__main__':
         mlflow.log_param("epochs", args.epochs)
         mlflow.log_param("feature_vars", ",".join(feature_vars))
         lr = 1e-4
-        weight_decay = 1e-2
-        decoder_dropout = 0.2
+        weight_decay = 0.0
+        decoder_dropout = 0.0
         mlflow.log_param("lr", lr)
         mlflow.log_param("weight_decay", weight_decay)
         mlflow.log_param("decoder_dropout", decoder_dropout)

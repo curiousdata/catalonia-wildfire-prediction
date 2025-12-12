@@ -7,7 +7,7 @@ from numcodecs import Blosc
 
 OLD_ZARR = Path("data/silver/IberFire_time1_xyfull.zarr")
 OUT_DIR = Path("data/gold")
-COARSEN_FACTOR = 8
+COARSEN_FACTOR = 32
 
 NEW_ZARR = OUT_DIR / f"IberFire_coarse{COARSEN_FACTOR}_time1.zarr"
 LABEL_VARS = ["is_fire"]
