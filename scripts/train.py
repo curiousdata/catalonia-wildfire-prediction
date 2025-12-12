@@ -220,7 +220,6 @@ if __name__ == '__main__':
         ]
 
         in_channels = len(feature_vars)
-        mlflow.log_param("architecture", f"Unet({encoder_name},imagenet,in={in_channels})")
         mlflow.log_param("in_channels", in_channels)
         mlflow.log_param("epochs", args.epochs)
         mlflow.log_param("feature_vars", ",".join(feature_vars))
@@ -228,6 +227,7 @@ if __name__ == '__main__':
         weight_decay = 2e-3
         decoder_dropout = 0.10  # try 0.20 next if still overfitting
         encoder_name = "resnet34"
+        mlflow.log_param("architecture", f"Unet({encoder_name},imagenet,in={in_channels})")
         mlflow.log_param("encoder_name", encoder_name)
         mlflow.log_param("lr", lr)
         mlflow.log_param("weight_decay", weight_decay)
