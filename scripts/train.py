@@ -1,61 +1,22 @@
 import argparse
-import time
-import sys
 import os
+import sys
+import time
 from pathlib import Path
+
 import mlflow
 import mlflow.pytorch
-from sklearn.metrics import roc_auc_score, average_precision_score
 import numpy as np
-
-# Add project root to path BEFORE importing from src
-project_root = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(project_root))
-
-# Now import from src
 import segmentation_models_pytorch as smp
 import torch
 import tqdm
+from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data import DataLoader
-import torch.nn as nn
-import torch.nn.functional as F
-
-class BinaryFocalLoss(nn.Module):
-    def __init__(self, alpha: float = 0.25, gamma: float = 2.0, reduction: str = "mean"):
-        super().__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """
-        Focal loss for binary classification with logits.
-
-        Args:
-            logits: raw model outputs (before sigmoid), shape (N, 1, H, W) or similar.
-            targets: binary targets in {0, 1}, same shape as logits.
-        """
-        # Ensure targets are float
-        targets = targets.type_as(logits)
-        # Binary cross entropy with logits, no reduction
-        bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
-        # Convert to p_t as in the focal loss paper
-        p_t = torch.exp(-bce)
-        focal_term = (1 - p_t) ** self.gamma
-        loss = self.alpha * focal_term * bce
-
-        if self.reduction == "mean":
-            return loss.mean()
-        elif self.reduction == "sum":
-            return loss.sum()
-        else:
-            return loss
-
 
 from src.data.datasets import SimpleIberFireSegmentationDataset
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, required=True, help="Name of the model file inside models/")
     parser.add_argument("--epochs", type=int, required=True, help="Number of training epochs")
@@ -220,15 +181,18 @@ if __name__ == '__main__':
         ]
 
         in_channels = len(feature_vars)
-        mlflow.log_param("in_channels", in_channels)
-        mlflow.log_param("epochs", args.epochs)
-        mlflow.log_param("feature_vars", ",".join(feature_vars))
+
+        # Model / optimizer hyperparameters
+        encoder_name = "resnet34"
         lr = 1e-4
         weight_decay = 2e-3
         decoder_dropout = 0.10  # try 0.20 next if still overfitting
-        encoder_name = "resnet34"
-        mlflow.log_param("architecture", f"Unet({encoder_name},imagenet,in={in_channels})")
+
         mlflow.log_param("encoder_name", encoder_name)
+        mlflow.log_param("architecture", f"Unet({encoder_name},imagenet,in={in_channels})")
+        mlflow.log_param("in_channels", in_channels)
+        mlflow.log_param("epochs", args.epochs)
+        mlflow.log_param("feature_vars", ",".join(feature_vars))
         mlflow.log_param("lr", lr)
         mlflow.log_param("weight_decay", weight_decay)
         mlflow.log_param("decoder_dropout", decoder_dropout)
