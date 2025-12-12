@@ -3,7 +3,13 @@ import os
 import sys
 import time
 from pathlib import Path
-project_root = Path(__file__).parent.parent.resolve()
+
+# Project root is the parent directory of /scripts
+project_root = Path(__file__).resolve().parents[1]
+
+# Ensure project root is on PYTHONPATH so `import src...` works
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 import mlflow
 import mlflow.pytorch
 import numpy as np
