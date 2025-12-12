@@ -221,13 +221,14 @@ if __name__ == '__main__':
 
         in_channels = len(feature_vars)
         mlflow.log_param("architecture", f"Unet(mobilenet_v2,in={in_channels})")
-        mlflow.log_param("encoder_name", "mobilenet_v2")
         mlflow.log_param("in_channels", in_channels)
         mlflow.log_param("epochs", args.epochs)
         mlflow.log_param("feature_vars", ",".join(feature_vars))
         lr = 1e-4
-        weight_decay = 0.0
-        decoder_dropout = 0.0
+        weight_decay = 1e-3
+        decoder_dropout = 0.05
+        encoder_name = "resnet34"
+        mlflow.log_param("encoder_name", encoder_name)
         mlflow.log_param("lr", lr)
         mlflow.log_param("weight_decay", weight_decay)
         mlflow.log_param("decoder_dropout", decoder_dropout)
@@ -284,27 +285,27 @@ if __name__ == '__main__':
         # ==========================
         # Sanity checks: positive ratios
         # ==========================
-        # def compute_pos_ratio(loader):
-        #     total_pos = 0
-        #     total_pixels = 0
-        #     for _, yb in loader:
-        #         total_pos += yb.sum().item()
-        #         total_pixels += yb.numel()
-        #     return total_pos, total_pixels, (total_pos / total_pixels if total_pixels > 0 else 0.0)
+        def compute_pos_ratio(loader):
+            total_pos = 0
+            total_pixels = 0
+            for _, yb in loader:
+                total_pos += yb.sum().item()
+                total_pixels += yb.numel()
+            return total_pos, total_pixels, (total_pos / total_pixels if total_pixels > 0 else 0.0)
 
-        # train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
-        # val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
+        train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
+        val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
 
-        # print("=== SANITY CHECKS ===")
-        # print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
-        # print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
-        # print("======================")
+        print("=== SANITY CHECKS ===")
+        print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
+        print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
+        print("======================")
 
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         model = smp.Unet(
-            encoder_name="mobilenet_v2",
-            encoder_weights=None,
+            encoder_name=encoder_name,
+            encoder_weights="imagenet",
             in_channels=in_channels,
             classes=1,
             activation=None,
@@ -312,7 +313,7 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        pos_weight = 50000.0
+        pos_weight = min(1000.0, (train_pix - train_pos) / (train_pos + 1e-6))
         pos_weight = torch.tensor([pos_weight], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         #criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
