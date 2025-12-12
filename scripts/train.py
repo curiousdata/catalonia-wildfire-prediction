@@ -215,7 +215,7 @@ if __name__ == "__main__":
             lead_time=lead_time,
             compute_stats=True,
             stats_path=TRAIN_STATS_PATH,
-            mode="balanced_days",
+            mode="fire_only",
             day_indices_path=FIRE_DAY_INDICES_PATH,
             balanced_ratio=1.0,
         )
@@ -246,7 +246,7 @@ if __name__ == "__main__":
             lead_time=lead_time,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
-            mode="all",
+            mode="balanced_days",
             day_indices_path=FIRE_DAY_INDICES_PATH,
         )
 
@@ -313,10 +313,8 @@ if __name__ == "__main__":
         NUM_EPOCHS = args.epochs
         overall_start = time.time()
         model.train()
+        # Early stopping disabled for now (train for full NUM_EPOCHS)
         best_val_loss = float("inf")
-        patience = 5
-        min_epochs_before_stop = 10
-        epochs_no_improve = 0
         best_model_state = None
         for epoch in range(NUM_EPOCHS):
             train_loss_sum = 0.0
@@ -395,22 +393,14 @@ if __name__ == "__main__":
             mlflow.log_metric("validation_roc_auc", roc_auc, step=epoch + 1)
             mlflow.log_metric("validation_pr_auc", pr_auc, step=epoch + 1)
 
-            # Early stopping and best-model tracking based on validation loss
+            # Track best validation loss (no early stopping)
             if test_loss < best_val_loss - 1e-4:
                 best_val_loss = test_loss
-                epochs_no_improve = 0
                 best_model_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-            else:
-                # Only start early-stopping checks after a minimum number of epochs
-                if (epoch + 1) >= min_epochs_before_stop:
-                    epochs_no_improve += 1
-                    if epochs_no_improve >= patience:
-                        print(f"Early stopping triggered at epoch {epoch + 1}")
-                        break
 
             model.train()
 
-        # Restore best model (by validation loss) if early stopping was triggered
+        # Optionally restore best model (by validation loss) after full training
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
 
