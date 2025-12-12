@@ -91,7 +91,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         stats: Optional[Dict[str, Dict[str, float]]] = None,
         compute_stats: bool = False,
         stats_path: Optional[str] = None,
-        mode: str = "fire_only",
+        mode: str = "all",
         day_indices_path: Optional[str] = None,
         balanced_ratio: float = 1.0,
         seed: int = 42,
