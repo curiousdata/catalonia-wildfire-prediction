@@ -220,13 +220,13 @@ if __name__ == '__main__':
         ]
 
         in_channels = len(feature_vars)
-        mlflow.log_param("architecture", f"Unet(mobilenet_v2,in={in_channels})")
+        mlflow.log_param("architecture", f"Unet({encoder_name},imagenet,in={in_channels})")
         mlflow.log_param("in_channels", in_channels)
         mlflow.log_param("epochs", args.epochs)
         mlflow.log_param("feature_vars", ",".join(feature_vars))
         lr = 1e-4
-        weight_decay = 1e-3
-        decoder_dropout = 0.05
+        weight_decay = 2e-3
+        decoder_dropout = 0.10  # try 0.20 next if still overfitting
         encoder_name = "resnet34"
         mlflow.log_param("encoder_name", encoder_name)
         mlflow.log_param("lr", lr)
@@ -234,6 +234,7 @@ if __name__ == '__main__':
         mlflow.log_param("decoder_dropout", decoder_dropout)
 
         TRAIN_STATS_PATH = project_root / "stats" / "simple_iberfire_stats_train.json"
+        FIRE_DAY_INDICES_PATH = project_root / "stats" / "fire_day_indices.json"
         train_ds = SimpleIberFireSegmentationDataset(
             zarr_path=ZARR_PATH,
             time_start=train_time_start,
@@ -244,6 +245,9 @@ if __name__ == '__main__':
             lead_time=lead_time,
             compute_stats=True,
             stats_path=TRAIN_STATS_PATH,
+            mode="balanced_days",
+            day_indices_path=FIRE_DAY_INDICES_PATH,
+            balanced_ratio=1.0,
         )
 
         train_loader = DataLoader(
@@ -272,6 +276,8 @@ if __name__ == '__main__':
             lead_time=lead_time,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
+            mode="all",
+            day_indices_path=FIRE_DAY_INDICES_PATH,
         )
 
         test_loader = DataLoader(
@@ -313,12 +319,15 @@ if __name__ == '__main__':
         )
 
         model = model.to(device)
-        pos_weight = min(1000.0, (train_pix - train_pos) / (train_pos + 1e-6))
-        pos_weight = torch.tensor([pos_weight], device=device)
+        # Pos-weight based on observed pixel imbalance in the (effective) training loader.
+        # For BCEWithLogitsLoss, a tensor of shape [1] correctly broadcasts to [B, 1, H, W].
+        pos_weight_value = float((train_pix - train_pos) / (train_pos + 1e-6))
+        pos_weight = torch.tensor([pos_weight_value], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        #criterion = BinaryFocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
         mlflow.log_param("criterion", "BCEWithLogitsLoss")
-        mlflow.log_param("pos_weight", pos_weight)
+        mlflow.log_param("pos_weight", pos_weight_value)
+        mlflow.log_param("train_pos_ratio", float(train_ratio))
+        mlflow.log_param("val_pos_ratio", float(val_ratio))
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         checkpoint_path = project_root / "models" / model_file_name
@@ -335,11 +344,13 @@ if __name__ == '__main__':
         overall_start = time.time()
         model.train()
         best_val_loss = float("inf")
-        patience = 3
+        patience = 5
+        min_epochs_before_stop = 10
         epochs_no_improve = 0
         best_model_state = None
         for epoch in range(NUM_EPOCHS):
-            train_loss = 0.0
+            train_loss_sum = 0.0
+            train_pixels = 0
             pbar = tqdm.tqdm(
                 train_loader,
                 desc=f"Epoch: {epoch + 1}/{NUM_EPOCHS}",
@@ -357,15 +368,17 @@ if __name__ == '__main__':
                 loss.backward()
                 optimizer.step()
 
-                train_loss += loss.item() * X_batch.size(0)
+                train_loss_sum += loss.item() * y_batch.numel()
+                train_pixels += y_batch.numel()
                 pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
-            train_loss /= len(train_loader.dataset)
-            mlflow.log_metric("train_loss", train_loss, step=epoch + 1)
+            train_loss_per_pixel = train_loss_sum / max(train_pixels, 1)
+            mlflow.log_metric("train_loss_per_pixel", train_loss_per_pixel, step=epoch + 1)
 
             model.eval()
             with torch.no_grad():
-                test_loss = 0.0
+                test_loss_sum = 0.0
+                val_pixels = 0
                 all_probs = []
                 all_targets = []
 
@@ -382,7 +395,8 @@ if __name__ == '__main__':
 
                     val_outputs = model(X_val)
                     val_loss = criterion(val_outputs, y_val)
-                    test_loss += val_loss.item() * X_val.size(0)
+                    test_loss_sum += val_loss.item() * y_val.numel()
+                    val_pixels += y_val.numel()
                     test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
 
                     # collect probabilities and targets for metrics
@@ -391,7 +405,7 @@ if __name__ == '__main__':
                     all_probs.append(probs_batch)
                     all_targets.append(targets_batch)
 
-            test_loss /= len(test_loader.dataset)
+            test_loss = test_loss_sum / max(val_pixels, 1)
 
             # concatenate all batches
             all_probs = torch.cat(all_probs).numpy()
@@ -407,7 +421,7 @@ if __name__ == '__main__':
             except ValueError:
                 pr_auc = float("nan")
 
-            mlflow.log_metric("val_loss", test_loss, step=epoch + 1)
+            mlflow.log_metric("val_loss_per_pixel", test_loss, step=epoch + 1)
             mlflow.log_metric("validation_roc_auc", roc_auc, step=epoch + 1)
             mlflow.log_metric("validation_pr_auc", pr_auc, step=epoch + 1)
 
@@ -417,10 +431,12 @@ if __name__ == '__main__':
                 epochs_no_improve = 0
                 best_model_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             else:
-                epochs_no_improve += 1
-                if epochs_no_improve >= patience:
-                    print(f"Early stopping triggered at epoch {epoch + 1}")
-                    break
+                # Only start early-stopping checks after a minimum number of epochs
+                if (epoch + 1) >= min_epochs_before_stop:
+                    epochs_no_improve += 1
+                    if epochs_no_improve >= patience:
+                        print(f"Early stopping triggered at epoch {epoch + 1}")
+                        break
 
             model.train()
 
