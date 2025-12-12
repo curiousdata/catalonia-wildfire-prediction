@@ -3,7 +3,7 @@ import os
 import sys
 import time
 from pathlib import Path
-
+project_root = Path(__file__).parent.parent.resolve()
 import mlflow
 import mlflow.pytorch
 import numpy as np
