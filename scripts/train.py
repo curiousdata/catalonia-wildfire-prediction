@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
         # Model / optimizer hyperparameters
         encoder_name = "resnet34"
-        lr = 1e-4
+        lr = 3e-5
         weight_decay = 2e-3
         decoder_dropout = 0.10  # try 0.20 next if still overfitting
 
@@ -258,6 +258,30 @@ if __name__ == "__main__":
             pin_memory=False,
         )
 
+        # validation dataset: balanced_days (useful to see signal without overwhelming negatives)
+        val_balanced_ds = SimpleIberFireSegmentationDataset(
+            zarr_path=ZARR_PATH,
+            time_start=val_time_start,
+            time_end=val_time_end,
+            feature_vars=feature_vars,
+            label_var="is_fire",
+            spatial_downsample=spatial_downsample,
+            lead_time=lead_time,
+            compute_stats=False,
+            stats_path=TRAIN_STATS_PATH,
+            mode="balanced_days",
+            day_indices_path=FIRE_DAY_INDICES_PATH,
+            balanced_ratio=1.0,
+        )
+
+        val_balanced_loader = DataLoader(
+            val_balanced_ds,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=False,
+        )
+
         # ==========================
         # Sanity checks: positive ratios
         # ==========================
@@ -269,12 +293,59 @@ if __name__ == "__main__":
                 total_pixels += yb.numel()
             return total_pos, total_pixels, (total_pos / total_pixels if total_pixels > 0 else 0.0)
 
+        def evaluate_loader(model, criterion, loader, device, desc: str):
+            """Evaluate loss-per-pixel and threshold-free metrics on a dataloader."""
+            test_loss_sum = 0.0
+            val_pixels = 0
+            all_probs = []
+            all_targets = []
+
+            pbar = tqdm.tqdm(
+                loader,
+                desc=desc,
+                ncols=100,
+                file=sys.stdout,
+                dynamic_ncols=False,
+            )
+            for X_val, y_val in pbar:
+                X_val = X_val.to(device).float()
+                y_val = y_val.to(device).float()
+
+                val_outputs = model(X_val)
+                val_loss = criterion(val_outputs, y_val)
+
+                test_loss_sum += val_loss.item() * y_val.numel()
+                val_pixels += y_val.numel()
+                pbar.set_postfix({"loss": f"{val_loss.item():.4f}"})
+
+                probs_batch = torch.sigmoid(val_outputs).detach().cpu().view(-1)
+                targets_batch = y_val.detach().cpu().view(-1)
+                all_probs.append(probs_batch)
+                all_targets.append(targets_batch)
+
+            loss_per_pixel = test_loss_sum / max(val_pixels, 1)
+            all_probs_np = torch.cat(all_probs).numpy() if all_probs else np.array([])
+            all_targets_np = torch.cat(all_targets).numpy() if all_targets else np.array([])
+
+            try:
+                roc_auc = roc_auc_score(all_targets_np, all_probs_np) if all_targets_np.size else float("nan")
+            except ValueError:
+                roc_auc = float("nan")
+            try:
+                pr_auc = average_precision_score(all_targets_np, all_probs_np) if all_targets_np.size else float("nan")
+            except ValueError:
+                pr_auc = float("nan")
+
+            return loss_per_pixel, roc_auc, pr_auc
+
         train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
         val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
+        valb_pos, valb_pix, valb_ratio = compute_pos_ratio(val_balanced_loader)
 
         print("=== SANITY CHECKS ===")
         print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
         print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
+        print(f"Val (balanced_days) positives: {valb_pos} out of {valb_pix} pixels (ratio={valb_ratio:.8f})")
         print("======================")
 
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -291,13 +362,14 @@ if __name__ == "__main__":
         model = model.to(device)
         # Pos-weight based on observed pixel imbalance in the (effective) training loader.
         # For BCEWithLogitsLoss, a tensor of shape [1] correctly broadcasts to [B, 1, H, W].
-        pos_weight_value = float((train_pix - train_pos) / (train_pos + 1e-6))
+        pos_weight_value = float((train_pix - train_pos) / (train_pos + 1e-6)) / 2.0
         pos_weight = torch.tensor([pos_weight_value], device=device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         mlflow.log_param("criterion", "BCEWithLogitsLoss")
         mlflow.log_param("pos_weight", pos_weight_value)
         mlflow.log_param("train_pos_ratio", float(train_ratio))
         mlflow.log_param("val_pos_ratio", float(val_ratio))
+        mlflow.log_param("val_balanced_pos_ratio", float(valb_ratio))
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         checkpoint_path = project_root / "models" / model_file_name
@@ -313,9 +385,11 @@ if __name__ == "__main__":
         NUM_EPOCHS = args.epochs
         overall_start = time.time()
         model.train()
-        # Early stopping disabled for now (train for full NUM_EPOCHS)
-        best_val_loss = float("inf")
+        # Early stopping based on val_all_pr_auc (deployment distribution)
+        best_val_all_pr_auc = -float("inf")
         best_model_state = None
+        epochs_no_improve = 0
+        patience = 10
         for epoch in range(NUM_EPOCHS):
             train_loss_sum = 0.0
             train_pixels = 0
@@ -345,67 +419,52 @@ if __name__ == "__main__":
 
             model.eval()
             with torch.no_grad():
-                test_loss_sum = 0.0
-                val_pixels = 0
-                all_probs = []
-                all_targets = []
-
-                test_pbar = tqdm.tqdm(
-                    test_loader,
-                    desc="Validation",
-                    ncols=100,
-                    file=sys.stdout,
-                    dynamic_ncols=False,
+                val_all_loss, val_all_roc, val_all_pr = evaluate_loader(
+                    model=model,
+                    criterion=criterion,
+                    loader=test_loader,
+                    device=device,
+                    desc="Validation (all)",
                 )
-                for X_val, y_val in test_pbar:
-                    X_val = X_val.to(device).float()
-                    y_val = y_val.to(device).float()
+                val_bal_loss, val_bal_roc, val_bal_pr = evaluate_loader(
+                    model=model,
+                    criterion=criterion,
+                    loader=val_balanced_loader,
+                    device=device,
+                    desc="Validation (balanced_days)",
+                )
 
-                    val_outputs = model(X_val)
-                    val_loss = criterion(val_outputs, y_val)
-                    test_loss_sum += val_loss.item() * y_val.numel()
-                    val_pixels += y_val.numel()
-                    test_pbar.set_postfix({"val_loss": f"{val_loss.item():.4f}"})
+            mlflow.log_metric("val_all_loss_per_pixel", val_all_loss, step=epoch + 1)
+            mlflow.log_metric("val_all_roc_auc", val_all_roc, step=epoch + 1)
+            mlflow.log_metric("val_all_pr_auc", val_all_pr, step=epoch + 1)
 
-                    # collect probabilities and targets for metrics
-                    probs_batch = torch.sigmoid(val_outputs).detach().cpu().view(-1)
-                    targets_batch = y_val.detach().cpu().view(-1)
-                    all_probs.append(probs_batch)
-                    all_targets.append(targets_batch)
+            mlflow.log_metric("val_balanced_loss_per_pixel", val_bal_loss, step=epoch + 1)
+            mlflow.log_metric("val_balanced_roc_auc", val_bal_roc, step=epoch + 1)
+            mlflow.log_metric("val_balanced_pr_auc", val_bal_pr, step=epoch + 1)
 
-            test_loss = test_loss_sum / max(val_pixels, 1)
-
-            # concatenate all batches
-            all_probs = torch.cat(all_probs).numpy()
-            all_targets = torch.cat(all_targets).numpy()
-
-            # ROC-AUC and PR-AUC over full validation set (threshold-free)
-            try:
-                roc_auc = roc_auc_score(all_targets, all_probs)
-            except ValueError:
-                roc_auc = float("nan")
-            try:
-                pr_auc = average_precision_score(all_targets, all_probs)
-            except ValueError:
-                pr_auc = float("nan")
-
-            mlflow.log_metric("val_loss_per_pixel", test_loss, step=epoch + 1)
-            mlflow.log_metric("validation_roc_auc", roc_auc, step=epoch + 1)
-            mlflow.log_metric("validation_pr_auc", pr_auc, step=epoch + 1)
-
-            # Track best validation loss (no early stopping)
-            if test_loss < best_val_loss - 1e-4:
-                best_val_loss = test_loss
+            # Track best checkpoint by val_all_pr_auc and early stop when it stops improving
+            if np.isfinite(val_all_pr) and (val_all_pr > best_val_all_pr_auc + 1e-6):
+                best_val_all_pr_auc = float(val_all_pr)
+                epochs_no_improve = 0
                 best_model_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+                # Save best weights immediately
+                torch.save(best_model_state, checkpoint_path)
+            else:
+                epochs_no_improve += 1
+                if epochs_no_improve >= patience:
+                    print(
+                        f"Early stopping: val_all_pr_auc did not improve for {patience} epochs. Best={best_val_all_pr_auc:.6f}"
+                    )
+                    break
 
             model.train()
 
-        # Optionally restore best model (by validation loss) after full training
+        # Always restore best model (by val_all_pr_auc) after training
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
 
-        # Save the model weights locally for resume training
-        torch.save(model.state_dict(), checkpoint_path)
+        # Best checkpoint already saved during training; avoid overwriting with last-epoch weights.
+        # torch.save(model.state_dict(), checkpoint_path)
 
         # Move model to CPU for MLflow logging and signature inference
         model_cpu = model.to("cpu").eval()
