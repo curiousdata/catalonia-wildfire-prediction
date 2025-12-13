@@ -215,7 +215,7 @@ if __name__ == "__main__":
             lead_time=lead_time,
             compute_stats=True,
             stats_path=TRAIN_STATS_PATH,
-            mode="fire_only",
+            mode="balanced_days",
             day_indices_path=FIRE_DAY_INDICES_PATH,
             balanced_ratio=1.0,
         )
@@ -246,7 +246,7 @@ if __name__ == "__main__":
             lead_time=lead_time,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
-            mode="balanced_days",
+            mode="all",
             day_indices_path=FIRE_DAY_INDICES_PATH,
         )
 
