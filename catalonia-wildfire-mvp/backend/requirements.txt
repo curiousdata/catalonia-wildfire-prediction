@@ -1,0 +1,7 @@
+FastAPI
+torch
+torchvision
+pydantic
+uvicorn
+numpy
+requests
