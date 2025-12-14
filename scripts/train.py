@@ -18,6 +18,7 @@ import torch
 import tqdm
 from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data import DataLoader
+import math
 
 from src.data.datasets import SimpleIberFireSegmentationDataset
 
@@ -77,7 +78,7 @@ if __name__ == "__main__":
             "SWI_010",
             "SWI_020",
             "is_holiday",
-            "is_near_fire",
+            #"is_near_fire",
             "surface_pressure_max",
             "surface_pressure_mean",
             "surface_pressure_min",
@@ -360,13 +361,38 @@ if __name__ == "__main__":
         )
 
         model = model.to(device)
-        # Pos-weight based on observed pixel imbalance in the (effective) training loader.
-        # For BCEWithLogitsLoss, a tensor of shape [1] correctly broadcasts to [B, 1, H, W].
-        pos_weight_value = float((train_pix - train_pos) / (train_pos + 1e-6)) / 2.0
-        pos_weight = torch.tensor([pos_weight_value], device=device)
-        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        mlflow.log_param("criterion", "BCEWithLogitsLoss")
-        mlflow.log_param("pos_weight", pos_weight_value)
+        # --------------------------
+        # Logit-adjusted BCE loss
+        # --------------------------
+        # See: Menon et al., "Long-Tailed Classification via Logit Adjustment"
+        # For binary case, adjustment = log(pi_pos / pi_neg)
+
+        # Empirical class priors from training data (pixel-wise)
+        pi_pos = max(train_pos / max(train_pix, 1), 1e-8)
+        pi_neg = max(1.0 - pi_pos, 1e-8)
+
+        logit_adjustment = math.log(pi_pos / pi_neg)
+        logit_adjustment = torch.tensor(
+            logit_adjustment, device=device, dtype=torch.float32
+        )
+
+        base_bce = torch.nn.BCEWithLogitsLoss(reduction="mean")
+
+        def logit_adjusted_bce(logits, targets):
+            """
+            logits: [B, 1, H, W]
+            targets: [B, 1, H, W] in {0,1}
+            """
+            adjusted_logits = logits + logit_adjustment
+            return base_bce(adjusted_logits, targets)
+
+        criterion = logit_adjusted_bce
+
+        mlflow.log_param("criterion", "LogitAdjustedBCEWithLogits")
+        mlflow.log_param("pi_pos", float(pi_pos))
+        mlflow.log_param("pi_neg", float(pi_neg))
+        mlflow.log_param("logit_adjustment", float(logit_adjustment.item()))
+        mlflow.log_param("uses_pos_weight", False)
         mlflow.log_param("train_pos_ratio", float(train_ratio))
         mlflow.log_param("val_pos_ratio", float(val_ratio))
         mlflow.log_param("val_balanced_pos_ratio", float(valb_ratio))
@@ -415,7 +441,11 @@ if __name__ == "__main__":
                 pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
             train_loss_per_pixel = train_loss_sum / max(train_pixels, 1)
-            mlflow.log_metric("train_loss_per_pixel", train_loss_per_pixel, step=epoch + 1)
+            mlflow.log_metric(
+                "train_logit_adjusted_bce_per_pixel",
+                train_loss_per_pixel,
+                step=epoch + 1,
+            )
 
             model.eval()
             with torch.no_grad():
@@ -434,11 +464,19 @@ if __name__ == "__main__":
                     desc="Validation (balanced_days)",
                 )
 
-            mlflow.log_metric("val_all_loss_per_pixel", val_all_loss, step=epoch + 1)
+            mlflow.log_metric(
+                "val_all_logit_adjusted_bce_per_pixel",
+                val_all_loss,
+                step=epoch + 1,
+            )
             mlflow.log_metric("val_all_roc_auc", val_all_roc, step=epoch + 1)
             mlflow.log_metric("val_all_pr_auc", val_all_pr, step=epoch + 1)
 
-            mlflow.log_metric("val_balanced_loss_per_pixel", val_bal_loss, step=epoch + 1)
+            mlflow.log_metric(
+                "val_balanced_logit_adjusted_bce_per_pixel",
+                val_bal_loss,
+                step=epoch + 1,
+            )
             mlflow.log_metric("val_balanced_roc_auc", val_bal_roc, step=epoch + 1)
             mlflow.log_metric("val_balanced_pr_auc", val_bal_pr, step=epoch + 1)
 
