@@ -229,6 +229,29 @@ if __name__ == "__main__":
             pin_memory=False,
         )
 
+        # All-days training dataset and loader for curriculum
+        train_all_ds = SimpleIberFireSegmentationDataset(
+            zarr_path=ZARR_PATH,
+            time_start=train_time_start,
+            time_end=train_time_end,
+            feature_vars=feature_vars,
+            label_var="is_fire",
+            spatial_downsample=spatial_downsample,
+            lead_time=lead_time,
+            compute_stats=False,
+            stats_path=TRAIN_STATS_PATH,
+            mode="all",
+            day_indices_path=FIRE_DAY_INDICES_PATH,
+        )
+
+        train_all_loader = DataLoader(
+            train_all_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=0,
+            pin_memory=False,
+        )
+
         # Lightweight dataset sanity check (single sample access)
         sample_X, sample_y = train_ds[0]
         assert len(train_ds) > 0, "Training dataset is empty!"
@@ -339,12 +362,13 @@ if __name__ == "__main__":
 
             return loss_per_pixel, roc_auc, pr_auc
 
-        train_pos, train_pix, train_ratio = compute_pos_ratio(train_loader)
+        # Compute priors from all-days loader (for logit adjustment)
+        train_pos, train_pix, train_ratio = compute_pos_ratio(train_all_loader)
         val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
         valb_pos, valb_pix, valb_ratio = compute_pos_ratio(val_balanced_loader)
 
         print("=== SANITY CHECKS ===")
-        print(f"Train positives: {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
+        print(f"Train positives (all days): {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
         print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
         print(f"Val (balanced_days) positives: {valb_pos} out of {valb_pix} pixels (ratio={valb_ratio:.8f})")
         print("======================")
@@ -408,6 +432,10 @@ if __name__ == "__main__":
             print(f"No model found at {checkpoint_path}. Initializing new model.")
             os.makedirs(checkpoint_path.parent, exist_ok=True)
 
+        # Curriculum switch parameter
+        curriculum_epochs = 10
+        mlflow.log_param("curriculum_epochs", curriculum_epochs)
+
         NUM_EPOCHS = args.epochs
         overall_start = time.time()
         model.train()
@@ -419,9 +447,19 @@ if __name__ == "__main__":
         for epoch in range(NUM_EPOCHS):
             train_loss_sum = 0.0
             train_pixels = 0
+
+            if epoch < curriculum_epochs:
+                active_loader = train_loader  # balanced_days
+                train_mode = "balanced_days"
+            else:
+                active_loader = train_all_loader  # all days
+                train_mode = "all"
+
+            mlflow.log_param(f"epoch_{epoch+1}_train_mode", train_mode)
+
             pbar = tqdm.tqdm(
-                train_loader,
-                desc=f"Epoch: {epoch + 1}/{NUM_EPOCHS}",
+                active_loader,
+                desc=f"Epoch: {epoch + 1}/{NUM_EPOCHS} [train_mode={train_mode}]",
                 ncols=100,
                 file=sys.stdout,  # force stdout
                 dynamic_ncols=False,  # fixed width
