@@ -1,0 +1,12 @@
+{
+  "zarr_path": "/Users/vladimir/catalonia-wildfire-prediction/data/gold/IberFire_coarse32_time1.zarr",
+  "label_var": "is_fire",
+  "time_start": "2008-01-01",
+  "time_end": "2022-12-31",
+  "coarsen_factor": 32,
+  "total_pixels": 5676244,
+  "positives": 4817,
+  "negatives": 5671427,
+  "pos_ratio": 0.0008486245482047636,
+  "neg_ratio": 0.9991513754517952
+}
