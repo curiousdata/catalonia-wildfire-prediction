@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   backend:
     build:
@@ -5,9 +7,19 @@ services:
     container_name: backend-service
     ports:
       - "8000:8000"
+    environment:
+      # Path inside the container where the backend will look for model weights
+      - MODEL_PATH=/app/models
+      # Optional: allow switching device in code (cpu/mps/cuda). Backend should default safely.
+      - TORCH_DEVICE=cpu
     volumes:
+      # Live-reload convenience for MVP development
       - ./backend:/app
+      # Persist / share trained weights with the container
       - ./models:/app/models
+      # If you keep zarr/inputs inside the MVP folder, mount them too (safe even if empty)
+      - ./data:/app/data
+    restart: unless-stopped
 
   frontend:
     build:
@@ -15,7 +27,12 @@ services:
     container_name: frontend-service
     ports:
       - "8501:8501"
+    environment:
+      # Frontend should call the backend via service name on the compose network
+      - BACKEND_URL=http://backend:8000
     volumes:
+      # Live-reload convenience for MVP development
       - ./frontend:/app
     depends_on:
       - backend
+    restart: unless-stopped
