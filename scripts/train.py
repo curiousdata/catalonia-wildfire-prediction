@@ -397,7 +397,8 @@ if __name__ == "__main__":
         # accuracy on the training distribution, but should be adjusted by the ratio of
         # class priors to achieve better generalization.
         #
-        # For binary classification, the adjustment is: logits' = logits + log(pi_pos / pi_neg)
+        # For binary classification, the adjustment is:
+        #   adjusted_logits = logits + log(pi_pos / pi_neg)
         # where pi_pos and pi_neg are the empirical class priors (proportions) from training data.
         #
         # Why log ratio?
@@ -405,9 +406,9 @@ if __name__ == "__main__":
         #    decision boundary. Since logits are log-odds, adding log(pi_pos/pi_neg) shifts
         #    the decision boundary to account for class imbalance.
         # 2. When pi_pos < pi_neg (minority positive class), log(pi_pos/pi_neg) < 0, which
-        #    decreases the logits. This makes the model require stronger evidence to predict
-        #    the positive class, compensating for the fact that the model sees fewer positive
-        #    examples during training.
+        #    decreases the logit values for positive class predictions. This makes the model
+        #    less likely to predict positive unless there's strong evidence, compensating for
+        #    the fact that the model sees fewer positive examples during training.
         # 3. This is mathematically equivalent to adjusting the posterior probabilities to
         #    reflect a balanced test distribution, making the model less biased towards the
         #    majority class while still learning from the imbalanced training data.
