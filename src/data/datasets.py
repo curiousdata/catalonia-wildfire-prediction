@@ -95,6 +95,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         day_indices_path: Optional[str] = None,
         balanced_ratio: float = 1.0,
         seed: int = 42,
+        nan_policy: Literal["mean", "zero", "error"] = "mean",
     ):
         self.zarr_path = Path(zarr_path)
         self.feature_vars = feature_vars
@@ -110,6 +111,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         self.mode = mode
         self.balanced_ratio = balanced_ratio
         self.seed = seed
+        self.nan_policy = nan_policy
         self.stats_path: Optional[Path] = Path(stats_path) if stats_path is not None else None
         self.day_indices_path: Optional[Path] = (
             Path(day_indices_path) if day_indices_path is not None else None
@@ -500,15 +502,33 @@ class SimpleIberFireSegmentationDataset(Dataset):
                     f"[SimpleDataset] Feature '{v}' not found among dynamic, static, CLC base, or popdens base variables."
                 )
 
-            mean = self._means[i]
-            std = self._stds[i]
+            mean = float(self._means[i])
+            std = float(self._stds[i])
+
+            # Ensure numeric dtype
+            arr = np.asarray(arr, dtype="float32")
+
+            # Handle NaNs / infs deterministically (critical for training stability)
+            if not np.isfinite(arr).all():
+                if self.nan_policy == "error":
+                    raise ValueError(
+                        f"[SimpleDataset] Non-finite values found in feature '{v}' "
+                        f"at t={t} (idx={idx})."
+                    )
+                fill_value = 0.0 if self.nan_policy == "zero" else mean
+                arr = np.nan_to_num(arr, nan=fill_value, posinf=fill_value, neginf=fill_value)
+
+            # Normalize (std already clamped in __init__)
             arr = (arr - mean) / std
             X_arrays.append(arr)
 
         X = np.stack(X_arrays, axis=0).astype("float32")  # [C, H, W]
 
         # Load label at t + lead_time directly from coarsened Zarr
-        y = self.root[self.label_var][t_label, :, :]
+        y = np.asarray(self.root[self.label_var][t_label, :, :], dtype="float32")
+        if not np.isfinite(y).all():
+            # For labels, safest fallback is treating non-finite as 0 (no-fire)
+            y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
         y_bin = (y > 0.5).astype("float32")[np.newaxis, ...]  # [1, H, W]
 
         return torch.from_numpy(X), torch.from_numpy(y_bin)

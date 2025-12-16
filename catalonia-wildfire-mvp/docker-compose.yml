@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: backend-service
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=/app/models
+      - DATA_PATH=/app/data
+      - STATS_PATH=/app/stats
+      # Optional: allow switching device in code (cpu/mps/cuda). Backend should default safely.
+      - TORCH_DEVICE=cpu
+    volumes:
+      # Live-reload convenience for MVP development
+      - ./backend:/app
+      # Mount repo-root assets so you can run compose from the project root without moving files
+      - ../models:/app/models
+      - ../data:/app/data
+      - ../stats:/app/stats
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend-service
+    ports:
+      - "8501:8501"
+    environment:
+      # Frontend should call the backend via service name on the compose network
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      # Live-reload convenience for MVP development
+      - ./frontend:/app
+    depends_on:
+      - backend
+    restart: unless-stopped
