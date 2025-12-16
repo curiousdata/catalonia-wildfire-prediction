@@ -1,33 +1,100 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import APIRouter, HTTPException, Query
 
-# Canonical router import per enforced structure:
-# backend/src/api/routes.py defines `router = APIRouter()` and endpoints: /health, /dates, /map
-from .api.routes import router as api_router
+# IMPORTANT:
+# - API layer must not hardcode local laptop paths.
+# - API layer should only orchestrate: validate request, call inference functions, shape response.
+# - Pydantic schemas live in backend/src/types/schema.py.
 
-
-app = FastAPI(
-    title="Catalonia Wildfire Prediction API",
-    version="0.1.0",
-)
-
-# Include API routes
-app.include_router(api_router)
+router = APIRouter()
 
 
-@app.get("/")
-def root() -> dict:
-    """Simple landing endpoint for quick checks in the browser."""
-    return {
-        "service": "catalonia-wildfire-mvp",
-        "status": "ok",
-        "endpoints": ["/health", "/dates", "/map"],
-    }
+# ---- Schemas (canonical: types/schema.py; dev fallback keeps server runnable) ----
+try:
+    from ..types.schema import DatesResponse, MapResponse, ViewMode  # type: ignore
+except Exception:  # pragma: no cover
+    from enum import Enum
+    from pydantic import BaseModel
+    from typing import List, Optional
+
+    class ViewMode(str, Enum):
+        prediction = "prediction"
+        label = "label"
+        both = "both"
+
+    class DatesResponse(BaseModel):
+        dates: List[str]
+
+    class MapResponse(BaseModel):
+        image_b64: str
+        bounds: List[List[float]]
+        date: Optional[str] = None
+        view: Optional[str] = None
 
 
-if __name__ == "__main__":
-    import uvicorn
+# ---- Model loader (singleton accessor) ----
+try:
+    from ..models.loader import get_model  # type: ignore
+except Exception:  # pragma: no cover
+    get_model = None  # type: ignore
 
-    # For local debugging only; in Docker you typically run uvicorn via CMD.
-    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=False)
+
+# ---- Inference functions ----
+try:
+    from ..inference.predict import list_available_dates, build_map_overlay  # type: ignore
+except Exception:  # pragma: no cover
+    list_available_dates = None  # type: ignore
+    build_map_overlay = None  # type: ignore
+
+
+@router.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+@router.get("/dates", response_model=DatesResponse)
+def dates() -> DatesResponse:
+    if list_available_dates is None:
+        return DatesResponse(dates=[])
+
+    try:
+        dts = list_available_dates()
+        dts_str = [str(d) for d in dts]
+        return DatesResponse(dates=dts_str)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list dates: {e}")
+
+
+@router.get("/map", response_model=MapResponse)
+def map_overlay(
+    date: str = Query(..., description="Date to predict/visualize in YYYY-MM-DD."),
+    view: ViewMode = Query(ViewMode.prediction, description="prediction | label | both"),
+) -> MapResponse:
+    if build_map_overlay is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Map overlay inference is not wired yet. Implement build_map_overlay() in inference/predict.py.",
+        )
+
+    try:
+        model = get_model() if callable(get_model) else None
+        payload = build_map_overlay(date=date, view=str(view), model=model)
+
+        if not isinstance(payload, dict):
+            raise ValueError("build_map_overlay must return a dict")
+
+        if "image_b64" not in payload or "bounds" not in payload:
+            raise ValueError("build_map_overlay must return keys: image_b64, bounds")
+
+        return MapResponse(
+            image_b64=payload["image_b64"],
+            bounds=payload["bounds"],
+            date=date,
+            view=str(view),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build overlay: {e}")
