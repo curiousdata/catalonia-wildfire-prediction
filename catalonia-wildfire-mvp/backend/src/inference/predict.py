@@ -166,6 +166,107 @@ def build_map_overlay(*, date: str, view: ViewStr, model: Any = None) -> Dict[st
 
     return {"image_b64": image_b64, "bounds": bounds}
 
+def _year_for_index(ds: Any, day_index: int) -> int:
+    """Return calendar year for a given time index."""
+    if "time" not in ds.coords:
+        raise ValueError("Dataset has no 'time' coordinate.")
+    t = ds["time"].values[day_index]
+    try:
+        return int(str(np.datetime64(t, "D"))[:4])
+    except Exception:
+        return int(str(t)[:4])
+
+
+def _resolve_clc_var(ds: Any, base: str, year: int) -> str:
+    """Resolve base CLC feature (e.g., 'CLC_1' or 'CLC_forest_proportion') to a year-specific variable name."""
+    suffix = base[len("CLC_") :]
+    candidates = {
+        2006: f"CLC_2006_{suffix}",
+        2012: f"CLC_2012_{suffix}",
+        2018: f"CLC_2018_{suffix}",
+    }
+
+    if year <= 2011:
+        preferred_year = 2006
+    elif year <= 2017:
+        preferred_year = 2012
+    else:
+        preferred_year = 2018
+
+    preferred = candidates[preferred_year]
+    if preferred in ds:
+        return preferred
+
+    available_years = [yy for yy, name in candidates.items() if name in ds]
+    if not available_years:
+        raise KeyError(
+            f"CLC base feature '{base}' could not be resolved. Tried: {list(candidates.values())}"
+        )
+
+    nearest = min(available_years, key=lambda yy: abs(yy - year))
+    return candidates[nearest]
+
+
+def _resolve_popdens_var(ds: Any, year: int) -> str:
+    """Resolve popdens base feature to the nearest available popdens_<YYYY> variable."""
+    year_map: Dict[int, str] = {}
+    for name in list(getattr(ds, "data_vars", {}).keys()):
+        s = str(name)
+        if not s.startswith("popdens_"):
+            continue
+        parts = s.split("_")
+        if len(parts) != 2:
+            continue
+        try:
+            yy = int(parts[1])
+        except ValueError:
+            continue
+        year_map[yy] = s
+
+    if not year_map:
+        raise KeyError("popdens base feature requested but no popdens_YYYY variables found in dataset")
+
+    available_years = sorted(year_map.keys())
+    nearest = min(available_years, key=lambda yy: abs(yy - year))
+    return year_map[nearest]
+
+
+def _get_feature_array(*, ds: Any, day_index: int, feature: str) -> np.ndarray:
+    """Fetch a 2D [H,W] feature array for a given day index.
+
+    Mirrors training-time behavior:
+      - dynamic vars (with time dim)
+      - static vars (no time dim)
+      - year-aware CLC base vars: CLC_<suffix> -> CLC_<year>_<suffix>
+      - year-aware popdens base var: popdens -> popdens_<YYYY>
+    """
+    # Direct match in dataset
+    if feature in ds:
+        da = ds[feature]
+        if hasattr(da, "dims") and "time" in da.dims:
+            a = da.isel(time=day_index).values
+        else:
+            a = da.values
+        a = np.asarray(a)
+        return np.squeeze(a)
+
+    # Year-aware CLC base
+    if feature.startswith("CLC_"):
+        year = _year_for_index(ds, day_index)
+        resolved = _resolve_clc_var(ds, feature, year)
+        a = ds[resolved].values  # static
+        a = np.asarray(a)
+        return np.squeeze(a)
+
+    # Year-aware popdens base
+    if feature == "popdens":
+        year = _year_for_index(ds, day_index)
+        resolved = _resolve_popdens_var(ds, year)
+        a = ds[resolved].values  # static
+        a = np.asarray(a)
+        return np.squeeze(a)
+
+    raise KeyError(f"Feature '{feature}' not found and not recognized as a CLC/popdens base")
 
 def _predict_for_day(*, ds: Any, day_index: int, model: Any) -> np.ndarray:
     """Run model inference for one day.
@@ -187,15 +288,27 @@ def _predict_for_day(*, ds: Any, day_index: int, model: Any) -> np.ndarray:
             "FEATURE_VARS env var is not set. Provide comma-separated feature variables used by the trained model."
         )
 
-    # Stack [C,H,W]
+    # Stack [C,H,W] with training-like resolution (dynamic/static/year-aware)
     chans: List[np.ndarray] = []
+    missing: List[str] = []
+
     for v in feature_vars:
-        if v not in ds:
-            raise ValueError(f"Feature var '{v}' not found in dataset")
-        a = ds[v].isel(time=day_index).values
-        a = np.asarray(a)
-        a = np.squeeze(a)
-        chans.append(a)
+        try:
+            arr = _get_feature_array(ds=ds, day_index=day_index, feature=v)
+            chans.append(arr)
+        except Exception:
+            missing.append(v)
+
+    if missing:
+        names = list(getattr(ds, "data_vars", {}).keys())
+        clc_like = [str(n) for n in names if str(n).startswith("CLC_")][:30]
+        pop_like = [str(n) for n in names if str(n).startswith("popdens_")][:30]
+        raise ValueError(
+            "FEATURE_VARS contains variables that could not be resolved from the dataset. "
+            f"Missing/unresolved (up to 30): {missing[:30]}. "
+            f"Example available CLC vars: {clc_like}. "
+            f"Example available popdens vars: {pop_like}."
+        )
 
     x = np.stack(chans, axis=0).astype(np.float32)
 
