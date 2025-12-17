@@ -82,7 +82,7 @@ def map_overlay(
 
     try:
         model = get_model() if callable(get_model) else None
-        payload = build_map_overlay(date=date, view=str(view), model=model)
+        payload = build_map_overlay(date=date, view=view.value, model=model)
 
         if not isinstance(payload, dict):
             raise ValueError("build_map_overlay must return a dict")
