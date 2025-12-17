@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple
 
 import numpy as np
 
@@ -39,10 +40,17 @@ def _parse_feature_vars(s: str) -> List[str]:
 
 
 @lru_cache(maxsize=1)
-def _open_dataset():
-    """Open the Zarr dataset once per process."""
-    import xarray as xr
+def _get_segmentation_dataset() -> Any:
+    """Create the training-time dataset object inside the backend.
 
+    We rely on SimpleIberFireSegmentationDataset to reproduce *exactly* the
+    feature resolution + normalization + NaN handling + lead_time shifting logic
+    used during training.
+
+    Requirements:
+    - docker-compose mounts `../src` to `/workspace/train_src:ro`
+    - PYTHONPATH includes `/workspace/train_src`
+    """
     zarr_path = _env("IBERFIRE_ZARR_PATH", DEFAULT_ZARR_PATH)
     if not os.path.exists(zarr_path):
         raise FileNotFoundError(
@@ -50,24 +58,80 @@ def _open_dataset():
             f"Set IBERFIRE_ZARR_PATH env var or mount data into /app/data."
         )
 
-    # Consolidated metadata is ideal; if not consolidated, xarray will still usually open.
-    return xr.open_zarr(zarr_path, consolidated=False)
+    # Import training dataset implementation (mounted into the container)
+    try:
+        from data.datasets import SimpleIberFireSegmentationDataset  # type: ignore
+    except Exception as e:
+        raise ImportError(
+            "Failed to import training dataset code. Ensure docker-compose mounts ../src as "
+            "`/workspace/train_src:ro` and sets PYTHONPATH to include `/workspace/train_src`."
+        ) from e
+
+    feature_vars = _parse_feature_vars(os.getenv("FEATURE_VARS", ""))
+    if not feature_vars:
+        raise ValueError(
+            "FEATURE_VARS env var is not set. Provide comma-separated feature variables used by the trained model."
+        )
+
+    # Time range / target / lead_time mirror train.py defaults, but are configurable.
+    time_start = _env("TIME_START", "2001-01-01")
+    time_end = _env("TIME_END", "2030-12-31")
+    label_var = _env("TARGET_VAR", "is_fire")
+    lead_time = int(_env("LEAD_TIME", "1"))
+
+    # Optional: use the same stats json as training (recommended). If empty, dataset may compute or skip.
+    # You already mount ../stats -> /app/stats.
+    stats_path = os.getenv("NORM_STATS_PATH") or os.getenv("STATS_PATH")
+
+    # Optional: day selection / balancing controls (safe defaults: use all days)
+    mode = _env("DATA_MODE", "all")
+    day_indices_path = os.getenv("DAY_INDICES_PATH")
+
+    # Many dataset implementations accept additional knobs; keep a conservative set.
+    # If your datasets.py signature differs, this will raise a helpful error at startup.
+    try:
+        ds = SimpleIberFireSegmentationDataset(
+            zarr_path=zarr_path,
+            time_start=time_start,
+            time_end=time_end,
+            feature_vars=feature_vars,
+            label_var=label_var,
+            lead_time=lead_time,
+            stats_path=stats_path,
+            mode=mode,
+            day_indices_path=day_indices_path,
+        )
+    except TypeError:
+        # Fallback for older signatures (minimal required args)
+        ds = SimpleIberFireSegmentationDataset(
+            zarr_path=zarr_path,
+            time_start=time_start,
+            time_end=time_end,
+            feature_vars=feature_vars,
+            label_var=label_var,
+            lead_time=lead_time,
+        )
+
+    return ds
 
 
 def list_available_dates() -> List[str]:
     """Return available dates as ISO strings (YYYY-MM-DD) for the Streamlit date picker."""
-    ds = _open_dataset()
-    if "time" not in ds.coords:
-        raise ValueError("Dataset has no 'time' coordinate.")
+    ds = _get_segmentation_dataset()
 
-    times = ds["time"].values
-    # Convert to YYYY-MM-DD; handle numpy datetime64, pandas timestamps, etc.
     out: List[str] = []
-    for t in times:
-        # numpy.datetime64 -> 'YYYY-MM-DDTHH:MM:SS' like string sometimes
-        s = np.datetime_as_string(np.datetime64(t), unit="D")
-        out.append(s)
-    return out
+    for i in range(len(ds)):
+        t = ds.get_time_value(i)
+        out.append(str(t)[:10])
+
+    # Deduplicate while preserving order (some dataset modes can repeat)
+    seen = set()
+    uniq: List[str] = []
+    for d in out:
+        if d not in seen:
+            seen.add(d)
+            uniq.append(d)
+    return uniq
 
 
 def build_map_overlay(*, date: str, view: ViewStr, model: Any = None) -> Dict[str, Any]:
@@ -92,7 +156,11 @@ def build_map_overlay(*, date: str, view: ViewStr, model: Any = None) -> Dict[st
     if view not in ("prediction", "label", "both"):
         raise ValueError(f"Invalid view={view}")
 
-    ds = _open_dataset()
+    dataset = _get_segmentation_dataset()
+    # underlying xarray dataset for coords/bounds
+    xr_ds = getattr(dataset, "ds", None)
+    if xr_ds is None:
+        raise ValueError("Training dataset object has no `.ds` attribute (xarray dataset).")
 
     # ---- Resolve coordinates ----
     # The paper + your notes: x_coords/y_coords represent EPSG:3035 grid coordinates.
@@ -100,71 +168,193 @@ def build_map_overlay(*, date: str, view: ViewStr, model: Any = None) -> Dict[st
     x_name = _env("X_COORD_NAME", "x_coords")
     y_name = _env("Y_COORD_NAME", "y_coords")
 
-    if x_name in ds.coords:
-        x = ds.coords[x_name].values
-    elif x_name in ds:
-        x = ds[x_name].values
+    if x_name in xr_ds.coords:
+        x = xr_ds.coords[x_name].values
+    elif x_name in xr_ds:
+        x = xr_ds[x_name].values
     else:
         # Fallback common names
-        if "x" in ds.coords:
-            x = ds.coords["x"].values
+        if "x" in xr_ds.coords:
+            x = xr_ds.coords["x"].values
         else:
             raise ValueError(f"Could not find x coordinate '{x_name}' (nor fallback 'x') in dataset")
 
-    if y_name in ds.coords:
-        y = ds.coords[y_name].values
-    elif y_name in ds:
-        y = ds[y_name].values
+    if y_name in xr_ds.coords:
+        y = xr_ds.coords[y_name].values
+    elif y_name in xr_ds:
+        y = xr_ds[y_name].values
     else:
-        if "y" in ds.coords:
-            y = ds.coords["y"].values
+        if "y" in xr_ds.coords:
+            y = xr_ds.coords["y"].values
         else:
             raise ValueError(f"Could not find y coordinate '{y_name}' (nor fallback 'y') in dataset")
 
     bounds = _bounds_epsg3035_to_wgs84(x, y)
 
-    # ---- Select time slice ----
-    # We match by day. Dataset might store datetime64 with time-of-day; select nearest day.
-    t = np.datetime64(date)
-    if "time" not in ds.coords:
-        raise ValueError("Dataset has no 'time' coordinate.")
-
-    # Try exact day match
-    try:
-        day_index = int(np.where(ds["time"].values.astype("datetime64[D]") == t.astype("datetime64[D]"))[0][0])
-    except Exception:
-        # Fallback: nearest (safe for MVP)
-        # Convert to integer days
-        time_days = ds["time"].values.astype("datetime64[D]")
-        day_deltas = np.abs(time_days.astype("int64") - t.astype("datetime64[D]").astype("int64"))
-        day_index = int(day_deltas.argmin())
-
-    # ---- Build arrays ----
-    target_var = _env("TARGET_VAR", "is_fire")
+    # ---- Resolve dataset sample index for the requested date ----
+    # We match by YYYY-MM-DD on the dataset-provided time value.
+    date_str = str(date)[:10]
+    idxs = [i for i in range(len(dataset)) if str(dataset.get_time_value(i))[:10] == date_str]
+    if not idxs:
+        raise ValueError(f"No sample found for date {date_str} in the mounted dataset")
+    sample_index = idxs[0]
 
     label_arr: Optional[np.ndarray] = None
     if view in ("label", "both"):
-        if target_var not in ds:
-            raise ValueError(
-                f"TARGET_VAR='{target_var}' not found in dataset. "
-                "Set TARGET_VAR env var to the correct target variable name."
-            )
-        # Expect dims include time,y,x (or time, y, x). Use squeeze to get [H,W]
-        label_arr = ds[target_var].isel(time=day_index).values
-        label_arr = np.asarray(label_arr)
+        _x, y = dataset[sample_index]
+        # y is typically [1,H,W]
+        label_arr = y.detach().cpu().numpy() if hasattr(y, "detach") else np.asarray(y)
         label_arr = np.squeeze(label_arr)
 
     pred_arr: Optional[np.ndarray] = None
     if view in ("prediction", "both"):
         if model is None:
             raise ValueError("Model is required for view='prediction' or 'both'.")
-        pred_arr = _predict_for_day(ds=ds, day_index=day_index, model=model)
+        pred_arr = _predict_for_sample(dataset=dataset, sample_index=sample_index, model=model)
 
     # ---- Compose overlay (RGBA PNG) ----
     rgba = _compose_rgba(pred=pred_arr, label=label_arr, mode=view)
     image_b64 = _rgba_to_png_b64(rgba)
 
     return {"image_b64": image_b64, "bounds": bounds}
+
+
+def _predict_for_sample(*, dataset: Any, sample_index: int, model: Any) -> np.ndarray:
+    """Run model inference for one dataset sample.
+
+    The dataset returns X already normalized and with correct feature construction.
+    Returns a 2D array [H,W] of probabilities in [0,1].
+    """
+    import torch
+
+    X, _y = dataset[sample_index]  # X: [C,H,W]
+
+    # Ensure torch tensor
+    if not isinstance(X, torch.Tensor):
+        X = torch.as_tensor(X)
+
+    xt = X.unsqueeze(0).float()  # [1,C,H,W]
+
+    # Device selection
+    device = os.getenv("TORCH_DEVICE", "cpu")
+    if device == "mps" and torch.backends.mps.is_available():
+        dev = torch.device("mps")
+    elif device == "cuda" and torch.cuda.is_available():
+        dev = torch.device("cuda")
+    else:
+        dev = torch.device("cpu")
+
+    model = model.to(dev)
+    model.eval()
+    xt = xt.to(dev)
+
+    with torch.no_grad():
+        logits = model(xt)
+
+    # Accept common segmentation outputs:
+    if isinstance(logits, (list, tuple)):
+        logits = logits[0]
+
+    if hasattr(logits, "ndim") and logits.ndim == 4:
+        logits = logits[:, 0, :, :]
+    if hasattr(logits, "ndim") and logits.ndim == 3:
+        logits = logits[0]
+
+    probs = torch.sigmoid(logits).detach().float().cpu().numpy()
+    probs = np.asarray(probs)
+    probs = np.squeeze(probs)
+    return probs
+
+
+def _bounds_epsg3035_to_wgs84(x: np.ndarray, y: np.ndarray) -> List[List[float]]:
+    """Compute map bounds in lat/lon from EPSG:3035 coordinates."""
+    # x/y are 1D coordinate axes (preferred). If they are 2D, flatten.
+    x1 = np.asarray(x).reshape(-1)
+    y1 = np.asarray(y).reshape(-1)
+
+    xmin, xmax = float(np.nanmin(x1)), float(np.nanmax(x1))
+    ymin, ymax = float(np.nanmin(y1)), float(np.nanmax(y1))
+
+    try:
+        from pyproj import Transformer
+
+        tf = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
+        # corners: (xmin,ymin) and (xmax,ymax)
+        lon_min, lat_min = tf.transform(xmin, ymin)
+        lon_max, lat_max = tf.transform(xmax, ymax)
+        return [[float(lat_min), float(lon_min)], [float(lat_max), float(lon_max)]]
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to reproject EPSG:3035 -> EPSG:4326. Ensure 'pyproj' is installed in backend requirements."
+        ) from e
+
+
+def _compose_rgba(*, pred: Optional[np.ndarray], label: Optional[np.ndarray], mode: ViewStr) -> np.ndarray:
+    """Create an RGBA overlay image.
+
+    - prediction: grayscale heatmap (white = high probability)
+    - label: red mask
+    - both: prediction grayscale + label red on top
+
+    Returns RGBA uint8 image [H,W,4].
+    """
+    # Determine shape
+    base = pred if pred is not None else label
+    if base is None:
+        raise ValueError("Nothing to render")
+
+    base = np.asarray(base)
+    base = np.squeeze(base)
+    if base.ndim != 2:
+        raise ValueError(f"Expected 2D array for overlay, got shape {base.shape}")
+
+    h, w = base.shape
+
+    # Start transparent
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+
+    if pred is not None and mode in ("prediction", "both"):
+        p = np.asarray(pred, dtype=np.float32)
+        p = np.nan_to_num(p, nan=0.0, posinf=1.0, neginf=0.0)
+        p = np.clip(p, 0.0, 1.0)
+
+        # Robust scaling to make low-contrast predictions still visible
+        p1, p99 = np.percentile(p, [1, 99])
+        if not np.isfinite(p1) or not np.isfinite(p99) or p99 <= p1:
+            p1, p99 = float(p.min()), float(p.max())
+        denom = (p99 - p1) if (p99 - p1) > 1e-12 else 1.0
+        s = np.clip((p - p1) / denom, 0.0, 1.0)
+
+        red = (s * 255.0).astype(np.uint8)
+        alpha = (s * 200.0).astype(np.uint8)  # transparent where prob is low
+
+        rgba[..., 0] = red
+        rgba[..., 1] = 0
+        rgba[..., 2] = 0
+        rgba[..., 3] = alpha
+
+    if label is not None and mode in ("label", "both"):
+        m = np.asarray(label)
+        # Interpret anything >0 as fire label
+        mask = m > 0
+        # Paint red where label is true
+        rgba[mask, 0] = 255
+        rgba[mask, 1] = 0
+        rgba[mask, 2] = 0
+        rgba[mask, 3] = 180
+
+    return rgba
+
+
+def _rgba_to_png_b64(rgba: np.ndarray) -> str:
+    """Encode RGBA array to base64 PNG."""
+    from PIL import Image
+
+    img = Image.fromarray(rgba, mode="RGBA")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
 
 def _year_for_index(ds: Any, day_index: int) -> int:
     """Return calendar year for a given time index."""
@@ -267,169 +457,3 @@ def _get_feature_array(*, ds: Any, day_index: int, feature: str) -> np.ndarray:
         return np.squeeze(a)
 
     raise KeyError(f"Feature '{feature}' not found and not recognized as a CLC/popdens base")
-
-def _predict_for_day(*, ds: Any, day_index: int, model: Any) -> np.ndarray:
-    """Run model inference for one day.
-
-    MVP contract:
-    - FEATURE_VARS env var must be a comma-separated list of variables to stack as channels.
-    - Returns a 2D array [H,W] of probabilities in [0,1].
-
-    Notes:
-    - This function intentionally keeps assumptions minimal.
-    - If your training pipeline uses a dataset class for normalization / feature construction,
-      you can later swap this implementation to reuse that logic.
-    """
-    import torch
-
-    feature_vars = _parse_feature_vars(os.getenv("FEATURE_VARS", ""))
-    if not feature_vars:
-        raise ValueError(
-            "FEATURE_VARS env var is not set. Provide comma-separated feature variables used by the trained model."
-        )
-
-    # Stack [C,H,W] with training-like resolution (dynamic/static/year-aware)
-    chans: List[np.ndarray] = []
-    missing: List[str] = []
-
-    for v in feature_vars:
-        try:
-            arr = _get_feature_array(ds=ds, day_index=day_index, feature=v)
-            chans.append(arr)
-        except Exception:
-            missing.append(v)
-
-    if missing:
-        names = list(getattr(ds, "data_vars", {}).keys())
-        clc_like = [str(n) for n in names if str(n).startswith("CLC_")][:30]
-        pop_like = [str(n) for n in names if str(n).startswith("popdens_")][:30]
-        raise ValueError(
-            "FEATURE_VARS contains variables that could not be resolved from the dataset. "
-            f"Missing/unresolved (up to 30): {missing[:30]}. "
-            f"Example available CLC vars: {clc_like}. "
-            f"Example available popdens vars: {pop_like}."
-        )
-
-    x = np.stack(chans, axis=0).astype(np.float32)
-
-    # Optional: apply normalization stats if provided
-    # Expect JSON stored and mounted, or env paths. Keep this minimal for MVP.
-    # If you already save stats in JSON (per project memory), you can wire it here.
-
-    xt = torch.from_numpy(x).unsqueeze(0)  # [1,C,H,W]
-
-    # Device selection
-    device = os.getenv("TORCH_DEVICE", "cpu")
-    if device == "mps" and torch.backends.mps.is_available():
-        dev = torch.device("mps")
-    elif device == "cuda" and torch.cuda.is_available():
-        dev = torch.device("cuda")
-    else:
-        dev = torch.device("cpu")
-
-    model = model.to(dev)
-    model.eval()
-    xt = xt.to(dev)
-
-    with torch.no_grad():
-        logits = model(xt)
-
-    # Accept common segmentation outputs:
-    # - [1,1,H,W]
-    # - [1,H,W]
-    # - [H,W]
-    if isinstance(logits, (list, tuple)):
-        logits = logits[0]
-
-    if logits.ndim == 4:
-        logits = logits[:, 0, :, :]
-    if logits.ndim == 3:
-        logits = logits[0]
-
-    # Sigmoid to probability
-    probs = torch.sigmoid(logits).detach().float().cpu().numpy()
-    probs = np.asarray(probs)
-    probs = np.squeeze(probs)
-
-    return probs
-
-
-def _bounds_epsg3035_to_wgs84(x: np.ndarray, y: np.ndarray) -> List[List[float]]:
-    """Compute map bounds in lat/lon from EPSG:3035 coordinates."""
-    # x/y are 1D coordinate axes (preferred). If they are 2D, flatten.
-    x1 = np.asarray(x).reshape(-1)
-    y1 = np.asarray(y).reshape(-1)
-
-    xmin, xmax = float(np.nanmin(x1)), float(np.nanmax(x1))
-    ymin, ymax = float(np.nanmin(y1)), float(np.nanmax(y1))
-
-    try:
-        from pyproj import Transformer
-
-        tf = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
-        # corners: (xmin,ymin) and (xmax,ymax)
-        lon_min, lat_min = tf.transform(xmin, ymin)
-        lon_max, lat_max = tf.transform(xmax, ymax)
-        return [[float(lat_min), float(lon_min)], [float(lat_max), float(lon_max)]]
-    except Exception as e:
-        raise RuntimeError(
-            "Failed to reproject EPSG:3035 -> EPSG:4326. Ensure 'pyproj' is installed in backend requirements."
-        ) from e
-
-
-def _compose_rgba(*, pred: Optional[np.ndarray], label: Optional[np.ndarray], mode: ViewStr) -> np.ndarray:
-    """Create an RGBA overlay image.
-
-    - prediction: grayscale heatmap (white = high probability)
-    - label: red mask
-    - both: prediction grayscale + label red on top
-
-    Returns RGBA uint8 image [H,W,4].
-    """
-    # Determine shape
-    base = pred if pred is not None else label
-    if base is None:
-        raise ValueError("Nothing to render")
-
-    base = np.asarray(base)
-    base = np.squeeze(base)
-    if base.ndim != 2:
-        raise ValueError(f"Expected 2D array for overlay, got shape {base.shape}")
-
-    h, w = base.shape
-
-    # Start transparent
-    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-
-    if pred is not None and mode in ("prediction", "both"):
-        p = np.asarray(pred, dtype=np.float32)
-        p = np.clip(p, 0.0, 1.0)
-        g = (p * 255.0).astype(np.uint8)
-        # grayscale to RGB
-        rgba[..., 0] = g
-        rgba[..., 1] = g
-        rgba[..., 2] = g
-        # alpha: slightly transparent so base map is visible
-        rgba[..., 3] = 140
-
-    if label is not None and mode in ("label", "both"):
-        m = np.asarray(label)
-        # Interpret anything >0 as fire label
-        mask = m > 0
-        # Paint red where label is true
-        rgba[mask, 0] = 255
-        rgba[mask, 1] = 0
-        rgba[mask, 2] = 0
-        rgba[mask, 3] = 180
-
-    return rgba
-
-
-def _rgba_to_png_b64(rgba: np.ndarray) -> str:
-    """Encode RGBA array to base64 PNG."""
-    from PIL import Image
-
-    img = Image.fromarray(rgba, mode="RGBA")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
