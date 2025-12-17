@@ -46,7 +46,6 @@ def _fetch_overlay(date: str, view: str) -> Tuple[bytes, List[List[float]]]:
     img_bytes = base64.b64decode(image_b64)
     return img_bytes, bounds
 
-
 def _render_folium_overlay(img_bytes: bytes, bounds: List[List[float]]):
     import folium
 
@@ -62,7 +61,7 @@ def _render_folium_overlay(img_bytes: bytes, bounds: List[List[float]]):
     folium.raster_layers.ImageOverlay(
         image=data_url,
         bounds=[[lat_min, lon_min], [lat_max, lon_max]],
-        opacity=0.7,
+        opacity=1.0,
         interactive=False,
         cross_origin=False,
         zindex=1,
@@ -128,19 +127,20 @@ if run:
             st.error(f"Failed to fetch overlay: {e}")
             st.stop()
 
+    debug = st.checkbox("Debug overlay", value=True)
+    if debug:
+        st.caption("DEBUG: raw PNG returned by backend")
+        st.image(img_bytes)
+        st.caption("DEBUG: overlay bounds from backend")
+        st.write(bounds)
+
     m = _render_folium_overlay(img_bytes, bounds)
 
     st.subheader(f"Overlay for {date} ({view})")
 
-    # Prefer streamlit-folium if installed
-    try:
-        from streamlit_folium import st_folium
-
-        st_folium(m, width=None, height=650)
-    except Exception:
-        # Fallback: render as HTML
-        html = m.get_root().render()
-        st.components.v1.html(html, height=650, scrolling=True)
+    # Render Folium map as HTML for stability (streamlit-folium can be flaky in containers).
+    html = m.get_root().render()
+    st.components.v1.html(html, height=650, scrolling=True)
 
     with st.expander("Debug"):
         st.json({"bounds": bounds, "backend": BACKEND_URL})
