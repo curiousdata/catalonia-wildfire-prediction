@@ -36,6 +36,9 @@ services:
     environment:
       # Frontend should call the backend via service name on the compose network
       - BACKEND_URL=http://backend:8000
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - STREAMLIT_SERVER_HEADLESS=true
+      - HOME=/tmp
     volumes:
       # Live-reload convenience for MVP development
       - ./frontend:/app
