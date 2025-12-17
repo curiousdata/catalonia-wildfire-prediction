@@ -10,6 +10,7 @@ services:
     environment:
       - MODEL_PATH=/app/models
       - DATA_PATH=/app/data
+      - IBERFIRE_ZARR_PATH=/app/data/gold/IberFire_coarse8_time1.zarr
       - STATS_PATH=/app/stats
       # Optional: allow switching device in code (cpu/mps/cuda). Backend should default safely.
       - TORCH_DEVICE=cpu
