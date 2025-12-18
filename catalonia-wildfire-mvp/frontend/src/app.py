@@ -53,7 +53,7 @@ def _render_folium_overlay(img_bytes: bytes, bounds: List[List[float]]):
     (lat_min, lon_min), (lat_max, lon_max) = bounds
     center = [(lat_min + lat_max) / 2.0, (lon_min + lon_max) / 2.0]
 
-    m = folium.Map(location=center, zoom_start=8, tiles="CartoDB positron")
+    m = folium.Map(location=center, zoom_start=8, tiles="OpenTopoMap")
 
     # Folium ImageOverlay accepts raw bytes via a data URL
     data_url = "data:image/png;base64," + base64.b64encode(img_bytes).decode("utf-8")
@@ -75,7 +75,8 @@ def _render_folium_overlay(img_bytes: bytes, bounds: List[List[float]]):
 # UI
 # -----------------------------
 
-st.title("Catalonia Wildfire Prediction Dashboard (MVP)")
+st.title("Catalonia Wildfire Risk Map")
+st.caption("Daily spatial prediction of wildfire risk across Catalonia")
 
 with st.sidebar:
     st.subheader("Controls")
@@ -127,7 +128,7 @@ if run:
             st.error(f"Failed to fetch overlay: {e}")
             st.stop()
 
-    debug = st.checkbox("Debug overlay", value=True)
+    debug = st.checkbox("Debug overlay", value=False)
     if debug:
         st.caption("DEBUG: raw PNG returned by backend")
         st.image(img_bytes)
