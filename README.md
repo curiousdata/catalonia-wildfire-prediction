@@ -26,7 +26,7 @@ catalonia-wildfire-prediction/
 ├── src/                         # Core modules
 │   ├── data/                    # Dataset classes
 │   └── models/                  # Model architectures
-├── docker-compose.yml           # MLflow server configuration
+├── docker-compose.yml           # Monolith application configuration
 └── requirements.txt             # Python dependencies
 ```
 
@@ -34,7 +34,7 @@ catalonia-wildfire-prediction/
 
 ### Prerequisites
 - Python 3.13+
-- Docker and Docker Compose (for MLflow)
+- Docker and Docker Compose (for the monolith application)
 - CUDA-compatible GPU (recommended for training)
 
 ### Installation
@@ -44,9 +44,9 @@ catalonia-wildfire-prediction/
    pip install -r requirements.txt
    ```
 
-2. **Start MLflow server:**
+2. **Start MLflow server (optional, for experiment tracking):**
    ```bash
-   docker-compose up -d
+   mlflow server --host 0.0.0.0 --port 5001
    ```
    Access MLflow UI at [http://localhost:5001](http://localhost:5001)
 
@@ -61,13 +61,12 @@ The training script uses the IberFire dataset in Zarr format and logs metrics to
 
 ### Running the Web Application
 
-From the `catalonia-wildfire-mvp` directory:
+The monolith application can be started using Docker Compose from the project root:
 ```bash
 docker-compose up --build
 ```
 
-- Frontend: [http://localhost:8501](http://localhost:8501)
-- Backend API: [http://localhost:8000](http://localhost:8000)
+Access the application at [http://localhost:8501](http://localhost:8501)
 
 ## Data Processing
 
@@ -89,6 +88,10 @@ This project builds upon the work of several researchers and open-source project
 - **MLflow**: Experiment tracking and model management
 - **xarray & Zarr**: Multi-dimensional array processing and storage
 - **FastAPI & Streamlit**: Web application framework
+
+### Research Papers
+- **Long-Tailed Classification via Logit Adjustment**: Menon, A. K., Jayasumana, S., Rawat, A. S., Jain, H., Veit, A., & Kumar, S. (2020). Long-tail learning via logit adjustment. arXiv preprint arXiv:2007.07314. https://arxiv.org/abs/2007.07314
+  - Used for addressing class imbalance in the wildfire prediction model through logit-adjusted loss
 
 ## License
 
