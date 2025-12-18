@@ -27,7 +27,8 @@ def _fetch_dates() -> List[str]:
         r.raise_for_status()
         payload = r.json()
         return list(payload.get("dates", []))
-    except Exception:
+    except requests.RequestException as exc:
+        st.error(f"Failed to fetch dates from backend: {exc}")
         return []
 
 
