@@ -19,28 +19,14 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /workspace
 
-# Install runtime dependencies (pin later)
-RUN pip install --no-cache-dir --upgrade pip
+# Copy monolith requirements (for reproducible builds)
+COPY docker/monolith/requirements.txt /tmp/requirements.txt
 
-# Minimal set for your monolith app
-RUN pip install --no-cache-dir \
-    streamlit \
-    requests \
-    numpy \
-    pillow \
-    folium \
-    torch \
-    segmentation-models-pytorch \
-    rasterio \
-    zarr \
-    xarray \
-    numcodecs \
-    pyproj \
-    tqdm
+# Install runtime dependencies (prefer wheels)
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install python deps for the monolith app
+RUN pip install --no-cache-dir --prefer-binary -r /tmp/requirements.txt
 
 # Fail fast if native wheels/libs are missing
 RUN python -c "import rasterio; import pyproj; print('rasterio', rasterio.__version__, 'pyproj', pyproj.__version__)"
-
-# NOTE:
-# If your src/data/datasets.py needs additional packages (pandas, scipy, etc.),
-# add them here. Keep it minimal for MVP.
