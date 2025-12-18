@@ -472,7 +472,6 @@ with st.sidebar:
     )
 
     view = st.radio("View", ["prediction", "label", "both"], index=0)
-    run = st.button("Render")
 
     st.markdown("---")
     st.subheader("Bounds tweak")
@@ -525,8 +524,26 @@ with st.spinner("Loading dataset + model (cached)..."):
     model = load_model(cfg)
     bounds = compute_bounds(ds, cfg)
 
+
 dates = list_available_dates(ds)
-date = st.selectbox("Date", options=dates, index=0)
+
+st.subheader("Prediction controls")
+
+col_date, col_run = st.columns([3, 1])
+
+with col_date:
+    date = st.selectbox(
+        "Select date",
+        options=dates,
+        index=0,
+        help="Type to search (YYYY-MM-DD)",
+    )
+
+with col_run:
+    run = st.button(
+        "Render map",
+        use_container_width=True,
+    )
 
 if run:
     idx = find_index_by_date(ds, date)
