@@ -13,7 +13,7 @@ router = APIRouter()
 # ---- Schemas (canonical: types/schema.py; dev fallback keeps server runnable) ----
 try:
     from ..types.schema import DatesResponse, MapResponse, ViewMode  # type: ignore
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     from enum import Enum
     from pydantic import BaseModel
     from typing import List, Optional
@@ -36,14 +36,14 @@ except Exception:  # pragma: no cover
 # ---- Model loader (singleton accessor) ----
 try:
     from ..models.loader import get_model  # type: ignore
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     get_model = None  # type: ignore
 
 
 # ---- Inference functions ----
 try:
     from ..inference.predict import list_available_dates, build_map_overlay  # type: ignore
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     list_available_dates = None  # type: ignore
     build_map_overlay = None  # type: ignore
 
@@ -57,7 +57,7 @@ def health() -> dict:
 @router.get("/dates", response_model=DatesResponse)
 def dates() -> DatesResponse:
     """Return available dates the system can serve (for the Streamlit date picker)."""
-    if list_available_dates is None:
+    if list_available_dates is None or not callable(list_available_dates):
         return DatesResponse(dates=[])
 
     try:
@@ -74,7 +74,7 @@ def map_overlay(
     view: ViewMode = Query(ViewMode.prediction, description="prediction | label | both"),
 ) -> MapResponse:
     """Return a map-ready overlay (base64 PNG + lat/lon bounds) for Folium."""
-    if build_map_overlay is None:
+    if build_map_overlay is None or not callable(build_map_overlay):
         raise HTTPException(
             status_code=501,
             detail="Map overlay inference is not wired yet. Implement build_map_overlay() in inference/predict.py.",

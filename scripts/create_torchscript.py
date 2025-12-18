@@ -27,6 +27,8 @@ def _normalize_model_name(name: str) -> tuple[str, str]:
 
 def build_model(in_channels: int) -> torch.nn.Module:
     # Mirrors scripts/train.py
+    # Note: decoder_dropout=0.10 matches training configuration. If the trained model
+    # was trained without decoder_dropout, this should be removed for exact matching.
     encoder_name = "resnet34"
     decoder_dropout = 0.10
 
@@ -56,13 +58,17 @@ def main() -> None:
         help="Optional output base name (no extension). Default: same as model_name.",
     )
     parser.add_argument(
-        "--h",
+        "--height",
+        "-H",
+        dest="h",
         type=int,
         default=115,
         help="Dummy input height for tracing (does not need to match training exactly).",
     )
     parser.add_argument(
-        "--w",
+        "--width",
+        "-W",
+        dest="w",
         type=int,
         default=149,
         help="Dummy input width for tracing (does not need to match training exactly).",

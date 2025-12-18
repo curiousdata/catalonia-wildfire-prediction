@@ -30,3 +30,9 @@ RUN pip install --no-cache-dir --prefer-binary -r /tmp/requirements.txt
 
 # Fail fast if native wheels/libs are missing
 RUN python -c "import rasterio; import pyproj; print('rasterio', rasterio.__version__, 'pyproj', pyproj.__version__)"
+
+# Create a non-root user for improved security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Switch to non-root user before copying application code
+USER appuser
