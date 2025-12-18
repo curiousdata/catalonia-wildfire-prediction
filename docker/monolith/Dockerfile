@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir \
     zarr \
     xarray \
     numcodecs \
+    pyproj \
     tqdm
 
 # NOTE:
