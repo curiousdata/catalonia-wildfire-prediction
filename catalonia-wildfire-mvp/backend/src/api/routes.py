@@ -13,7 +13,7 @@ router = APIRouter()
 # ---- Schemas (canonical: types/schema.py; dev fallback keeps server runnable) ----
 try:
     from ..types.schema import DatesResponse, MapResponse, ViewMode  # type: ignore
-except Exception:  # pragma: no cover
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
     from enum import Enum
     from pydantic import BaseModel
     from typing import List, Optional
@@ -36,14 +36,14 @@ except Exception:  # pragma: no cover
 # ---- Model loader (singleton accessor) ----
 try:
     from ..models.loader import get_model  # type: ignore
-except Exception:  # pragma: no cover
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
     get_model = None  # type: ignore
 
 
 # ---- Inference functions ----
 try:
     from ..inference.predict import list_available_dates, build_map_overlay  # type: ignore
-except Exception:  # pragma: no cover
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
     list_available_dates = None  # type: ignore
     build_map_overlay = None  # type: ignore
 
