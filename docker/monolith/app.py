@@ -565,7 +565,7 @@ if run:
     # --- Accurate reprojection path (warp raster into EPSG:4326) ---
     used_reprojection = False
     reproj_bounds = bounds
-    spain_mask_reproj = None
+    spain_mask_wgs84 = None
 
     if use_true_reprojection:
         if rasterio is None:
@@ -614,7 +614,7 @@ if run:
                     y = torch.from_numpy((y_wgs84 > 0.5).astype(np.float32)).unsqueeze(0)
 
                 # Replace X is_spain channel mask handling by keeping a separate mask array
-                spain_mask_reproj = (is_spain_wgs84 > 0.5) if is_spain_wgs84 is not None else None
+                spain_mask_wgs84 = (is_spain_wgs84 > 0.5) if is_spain_wgs84 is not None else None
 
                 used_reprojection = True
 
@@ -622,9 +622,9 @@ if run:
                 st.warning(f"Reprojection failed ({type(e).__name__}: {e}). Falling back to bounds-only overlay.")
                 used_reprojection = False
                 reproj_bounds = bounds
-                spain_mask_reproj = None
+                spain_mask_wgs84 = None
     else:
-        spain_mask_reproj = None
+        spain_mask_wgs84 = None
 
     # Recompute visualization copy after reprojection (do NOT change the underlying probabilities)
     p_vis = np.asarray(p2d, dtype=np.float32)
@@ -653,8 +653,8 @@ if run:
 
     # Optional: fully hide anything outside Spain (based on the is_spain feature channel)
     if mask_outside_spain:
-        if spain_mask_reproj is not None:
-            rgba[..., 3] = np.where(spain_mask_reproj, rgba[..., 3], 0).astype(np.uint8)
+        if spain_mask_wgs84 is not None:
+            rgba[..., 3] = np.where(spain_mask_wgs84, rgba[..., 3], 0).astype(np.uint8)
         else:
             try:
                 spain_idx = FEATURE_VARS.index("is_spain")
