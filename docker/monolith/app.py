@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -281,8 +282,6 @@ def alpha_over(bottom: np.ndarray, top: np.ndarray) -> np.ndarray:
 
 def rgba_to_png_bytes(rgba: np.ndarray) -> bytes:
     img = Image.fromarray(rgba, mode="RGBA")
-    import io
-
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
