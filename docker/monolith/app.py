@@ -181,7 +181,9 @@ def load_model(cfg: Cfg) -> torch.nn.Module:
         try:
             scripted = torch.jit.load(str(model_file), map_location=device)
         except Exception:
-            # Non-TorchScript pickle or other issue: retry with weights_only=False (trusted local artifact)
+            # Broad exception handling is intentional here: we're in a fallback path after
+            # both weights_only=True and TorchScript loading failed. This catches any unexpected
+            # file format issues. Final fallback: retry with weights_only=False (trusted local artifact)
             state = torch.load(str(model_file), map_location=device, weights_only=False)
         else:
             # The file is a TorchScript archive; fall back gracefully.
