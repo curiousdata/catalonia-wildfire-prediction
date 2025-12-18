@@ -8,10 +8,10 @@ services:
     restart: unless-stopped
     environment:
       # Dataset/model paths inside container
-      - IBERFIRE_ZARR_PATH=/app/data/gold/IberFire_coarse8_time1.zarr
+      - IBERFIRE_ZARR_PATH=/app/data/gold/IberFire_coarse32_time1.zarr
       - NORM_STATS_PATH=/app/stats/simple_iberfire_stats_train.json
       - MODEL_PATH=/app/models
-      - MODEL_FILE=resnet34_v9.torchscript
+      - MODEL_FILE=resnet34_v9.pth
       - SOURCE_EPSG=3035
 
       # Must match training behavior
