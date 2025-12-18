@@ -205,12 +205,19 @@ def probs_to_rgba(prob: np.ndarray, *, alpha_fixed: int | None = 255) -> np.ndar
     p = np.clip(p, 0.0, 1.0)
 
     red = (p * 255.0).astype(np.uint8)
+
+    # Treat (near) zero probabilities as fully transparent.
+    # This avoids faint red haze from tiny positive values.
+    eps = 1e-6
+
     if alpha_fixed is None:
+        # Alpha proportional to probability
         alpha = (p * 255.0).astype(np.uint8)
-        alpha = np.where(p > 0, alpha, 0).astype(np.uint8)
+        alpha = np.where(p > eps, alpha, 0).astype(np.uint8)
     else:
+        # Constant alpha for any non-trivial probability
         a = int(np.clip(alpha_fixed, 0, 255))
-        alpha = np.where(p > 0, a, 0).astype(np.uint8)
+        alpha = np.where(p > eps, a, 0).astype(np.uint8)
 
     rgba = np.zeros((p.shape[0], p.shape[1], 4), dtype=np.uint8)
     rgba[..., 0] = red
@@ -323,7 +330,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Overlay visualization")
     viz_mode = st.radio("Scaling", ["raw", "p99_stretch"], index=1)
-    alpha_mode = st.radio("Alpha", ["fixed_255", "scaled"], index=0)
+    alpha_mode = st.radio("Alpha", ["fixed_semi", "scaled"], index=0)
 
     view = st.radio("View", ["prediction", "label", "both"], index=0)
     run = st.button("Render")
@@ -363,7 +370,8 @@ if run:
         if denom > 0:
             p_vis = np.clip(p_vis / denom, 0.0, 1.0)
 
-    alpha_fixed = 255 if alpha_mode == "fixed_255" else None
+    # Semi-transparent red overlay by default
+    alpha_fixed = 160 if alpha_mode == "fixed_semi" else None
 
     rgba = np.zeros((p2d.shape[0], p2d.shape[1], 4), dtype=np.uint8)
 
