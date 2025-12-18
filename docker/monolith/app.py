@@ -161,14 +161,18 @@ def find_index_by_date(ds: SimpleIberFireSegmentationDataset, date_str: str) -> 
     raise ValueError(f"Date not found in dataset: {date_str}")
 
 
-def probs_to_rgba(prob: np.ndarray) -> np.ndarray:
+def probs_to_rgba(prob: np.ndarray, *, alpha_fixed: int | None = 255) -> np.ndarray:
     p = np.asarray(prob, dtype=np.float32)
     p = np.nan_to_num(p, nan=0.0, posinf=1.0, neginf=0.0)
     p = np.clip(p, 0.0, 1.0)
 
     red = (p * 255.0).astype(np.uint8)
-    alpha = (p * 255.0).astype(np.uint8)
-    alpha = np.where(p > 0, alpha, 0).astype(np.uint8)
+    if alpha_fixed is None:
+        alpha = (p * 255.0).astype(np.uint8)
+        alpha = np.where(p > 0, alpha, 0).astype(np.uint8)
+    else:
+        a = int(np.clip(alpha_fixed, 0, 255))
+        alpha = np.where(p > 0, a, 0).astype(np.uint8)
 
     rgba = np.zeros((p.shape[0], p.shape[1], 4), dtype=np.uint8)
     rgba[..., 0] = red
@@ -277,6 +281,11 @@ with st.sidebar:
     st.caption(f"SOURCE_EPSG: {cfg.source_epsg}")
 
     show_debug = st.checkbox("Show debug", value=True)
+    st.markdown("---")
+    st.subheader("Overlay visualization")
+    viz_mode = st.radio("Scaling", ["raw", "p99_stretch"], index=1)
+    alpha_mode = st.radio("Alpha", ["fixed_255", "scaled"], index=0)
+
     view = st.radio("View", ["prediction", "label", "both"], index=0)
     run = st.button("Render")
 
@@ -305,10 +314,22 @@ if run:
     else:
         p2d = probs
 
+    # Visualization copy (do NOT change the underlying probabilities)
+    p_vis = np.asarray(p2d, dtype=np.float32)
+    p_vis = np.nan_to_num(p_vis, nan=0.0, posinf=1.0, neginf=0.0)
+    p_vis = np.clip(p_vis, 0.0, 1.0)
+
+    if viz_mode == "p99_stretch":
+        denom = float(np.percentile(p_vis, 99))
+        if denom > 0:
+            p_vis = np.clip(p_vis / denom, 0.0, 1.0)
+
+    alpha_fixed = 255 if alpha_mode == "fixed_255" else None
+
     rgba = np.zeros((p2d.shape[0], p2d.shape[1], 4), dtype=np.uint8)
 
     if view in ("prediction", "both"):
-        rgba = alpha_over(rgba, probs_to_rgba(p2d))
+        rgba = alpha_over(rgba, probs_to_rgba(p_vis, alpha_fixed=alpha_fixed))
 
     if view in ("label", "both"):
         gt = y.squeeze().numpy()
@@ -328,7 +349,14 @@ if run:
         r1, r2 = max(0, r0 - half), min(p2d.shape[0], r0 + half + 1)
         c1, c2 = max(0, c0 - half), min(p2d.shape[1], c0 + half + 1)
         crop = p2d[r1:r2, c1:c2]
-        st.image(rgba_to_png_bytes(probs_to_rgba(crop)), caption="Zoomed crop around max")
+        crop_vis = np.asarray(crop, dtype=np.float32)
+        crop_vis = np.nan_to_num(crop_vis, nan=0.0, posinf=1.0, neginf=0.0)
+        crop_vis = np.clip(crop_vis, 0.0, 1.0)
+        if viz_mode == "p99_stretch":
+            denom_c = float(np.percentile(crop_vis, 99))
+            if denom_c > 0:
+                crop_vis = np.clip(crop_vis / denom_c, 0.0, 1.0)
+        st.image(rgba_to_png_bytes(probs_to_rgba(crop_vis, alpha_fixed=alpha_fixed)), caption="Zoomed crop around max")
 
         st.json(
             {
@@ -340,6 +368,11 @@ if run:
                 "pred_max": float(np.max(p2d)),
                 "pred_mean": float(np.mean(p2d)),
                 "p99": float(np.percentile(p2d, 99)),
+                "viz_mode": viz_mode,
+                "alpha_mode": alpha_mode,
+                "count_gt_1e-6": int(np.sum(p2d > 1e-6)),
+                "count_gt_1e-4": int(np.sum(p2d > 1e-4)),
+                "count_gt_1e-2": int(np.sum(p2d > 1e-2)),
                 "bounds": bounds,
                 "source_epsg": cfg.source_epsg,
             }
