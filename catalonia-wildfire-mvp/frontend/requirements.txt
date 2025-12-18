@@ -1,6 +1,7 @@
+# --- Core UI ---
 streamlit
 requests
-pandas
+
+# --- Mapping ---
 folium
 streamlit-folium
-pyproj
