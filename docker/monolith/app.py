@@ -161,6 +161,8 @@ def load_model(cfg: Cfg) -> torch.nn.Module:
     device = torch.device(cfg.torch_device)
 
     # Match the notebook/training architecture exactly
+    # Note: decoder_dropout is not specified here because it only affects training,
+    # not inference. The loaded weights already reflect dropout's effects during training.
     in_channels = len(FEATURE_VARS)
     m = smp.Unet(
         encoder_name="resnet34",
