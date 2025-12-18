@@ -563,7 +563,7 @@ if run:
     # --- Accurate reprojection path (warp raster into EPSG:4326) ---
     used_reprojection = False
     reproj_bounds = bounds
-    spain_mask_reproj = None
+    spain_mask_wgs84 = None
 
     if use_true_reprojection:
         if rasterio is None:
