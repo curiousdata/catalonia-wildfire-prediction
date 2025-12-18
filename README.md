@@ -20,7 +20,7 @@ catalonia-wildfire-prediction/
 ├── data/                        # Datasets (NetCDF, Zarr formats)
 ├── notebooks/                   # Jupyter notebooks for EDA and experiments
 ├── scripts/                     # Training and data processing scripts
-│   ├── train.py                 # CNN model training
+│   ├── train.py                 # U-Net model training
 │   ├── netcdf_to_zarr.py       # Data format conversion
 │   └── coarsen.py              # Spatial resolution adjustment
 ├── src/                         # Core modules
@@ -35,7 +35,7 @@ catalonia-wildfire-prediction/
 ### Prerequisites
 - Python 3.13+
 - Docker and Docker Compose (for the monolith application)
-- CUDA-compatible GPU (recommended for training)
+- CUDA- or MPS-compatible GPU (recommended for training)
 
 ### Installation
 
