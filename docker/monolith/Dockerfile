@@ -37,5 +37,11 @@ RUN pip install --no-cache-dir --prefer-binary -r /tmp/requirements.txt
 # Fail fast if native wheels/libs are missing
 RUN python -c "import rasterio; import pyproj; print('rasterio', rasterio.__version__, 'pyproj', pyproj.__version__)"
 
-# Switch to non-root user for running the application
-USER appuser
+# Create non-root user for running the application
+RUN addgroup --system app && adduser --system --ingroup app app
+
+# Set ownership of workspace directory
+RUN chown -R app:app /workspace
+
+# Switch to non-root user
+USER app
