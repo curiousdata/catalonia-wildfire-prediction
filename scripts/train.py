@@ -388,8 +388,30 @@ if __name__ == "__main__":
         # --------------------------
         # Logit-adjusted BCE loss
         # --------------------------
-        # See: Menon et al., "Long-Tailed Classification via Logit Adjustment"
-        # For binary case, adjustment = log(pi_pos / pi_neg)
+        # Based on: Menon et al., "Long-Tailed Classification via Logit Adjustment"
+        # https://arxiv.org/abs/2007.07314
+        #
+        # This approach addresses class imbalance by adjusting the model's logits during
+        # training to counteract the bias towards the majority class. The key insight is
+        # that the optimal classifier under class imbalance should not just maximize
+        # accuracy on the training distribution, but should be adjusted by the ratio of
+        # class priors to achieve better generalization.
+        #
+        # For binary classification, the adjustment is:
+        #   adjusted_logits = logits + log(pi_pos / pi_neg)
+        # where pi_pos and pi_neg are the empirical class priors (proportions) from training data.
+        #
+        # Why log ratio?
+        # 1. The log ratio acts as a "correction factor" in logit space that rebalances the
+        #    decision boundary. Since logits are log-odds, adding log(pi_pos/pi_neg) shifts
+        #    the decision boundary to account for class imbalance.
+        # 2. When pi_pos < pi_neg (minority positive class), log(pi_pos/pi_neg) < 0, which
+        #    decreases the logit values for positive class predictions. This makes the model
+        #    less likely to predict positive unless there's strong evidence, compensating for
+        #    the fact that the model sees fewer positive examples during training.
+        # 3. This is mathematically equivalent to adjusting the posterior probabilities to
+        #    reflect a balanced test distribution, making the model less biased towards the
+        #    majority class while still learning from the imbalanced training data.
 
         # Empirical class priors from training data (pixel-wise)
         pi_pos = max(train_pos / max(train_pix, 1), 1e-8)
