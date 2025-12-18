@@ -206,7 +206,7 @@ def main() -> None:
         print(f"[ERROR] Weights file not found: {weights_path}", file=sys.stderr)
         sys.exit(1)
 
-    out_dir = project_root / "catalonia-wildfire-mvp" / "models"
+    out_dir = project_root / "models"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{out_base}.torchscript"
 
