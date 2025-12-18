@@ -11,6 +11,17 @@ import streamlit as st
 import torch
 from PIL import Image
 from pyproj import Transformer
+
+try:
+    import rasterio
+    from rasterio.transform import from_bounds
+    from rasterio.warp import calculate_default_transform, reproject, Resampling
+except Exception:  # pragma: no cover
+    rasterio = None
+    from_bounds = None
+    calculate_default_transform = None
+    reproject = None
+    Resampling = None
 import segmentation_models_pytorch as smp
 
 from src.data.datasets import SimpleIberFireSegmentationDataset
@@ -270,6 +281,15 @@ def rgba_to_png_bytes(rgba: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
+def compute_source_bounds_xy(ds: SimpleIberFireSegmentationDataset) -> tuple[float, float, float, float]:
+    """Return (xmin, ymin, xmax, ymax) in the dataset's native CRS units."""
+    xr_ds = ds.ds
+    y = np.asarray(xr_ds["y"].values)
+    x = np.asarray(xr_ds["x"].values)
+    xmin, xmax = float(np.min(x)), float(np.max(x))
+    ymin, ymax = float(np.min(y)), float(np.max(y))
+    return xmin, ymin, xmax, ymax
+
 def compute_bounds(ds: SimpleIberFireSegmentationDataset, cfg: Cfg) -> List[List[float]]:
     """Return Folium-compatible bounds [[lat_min, lon_min], [lat_max, lon_max]]."""
     xr_ds = ds.ds
@@ -295,6 +315,77 @@ def compute_bounds(ds: SimpleIberFireSegmentationDataset, cfg: Cfg) -> List[List
         lats.append(float(lat))
 
     return [[float(np.min(lats)), float(np.min(lons))], [float(np.max(lats)), float(np.max(lons))]]
+
+
+def reproject_raster_to_wgs84(
+    arr: np.ndarray,
+    *,
+    ds: SimpleIberFireSegmentationDataset,
+    cfg: Cfg,
+    resampling: str = "bilinear",
+) -> tuple[np.ndarray, list[list[float]]]:
+    """Reproject a 2D raster from cfg.source_epsg to EPSG:4326.
+
+    Returns: (arr_wgs84, bounds_latlon)
+    bounds_latlon is [[lat_min, lon_min],[lat_max, lon_max]] matching the reprojected raster extent.
+
+    Requires rasterio. If rasterio is unavailable, raises RuntimeError.
+    """
+    if rasterio is None or from_bounds is None:
+        raise RuntimeError("rasterio is not available")
+
+    a = np.asarray(arr)
+    if a.ndim != 2:
+        raise ValueError(f"Expected 2D array to reproject, got shape {a.shape}")
+
+    xmin, ymin, xmax, ymax = compute_source_bounds_xy(ds)
+
+    src_crs = f"EPSG:{cfg.source_epsg}"
+    dst_crs = "EPSG:4326"
+
+    # Source transform: map pixel coordinates to CRS coordinates.
+    # Note: from_bounds expects bounds in (west, south, east, north) == (xmin, ymin, xmax, ymax)
+    src_transform = from_bounds(xmin, ymin, xmax, ymax, a.shape[1], a.shape[0])
+
+    # Compute target transform/shape for a reasonable default output grid
+    dst_transform, dst_width, dst_height = calculate_default_transform(
+        src_crs,
+        dst_crs,
+        a.shape[1],
+        a.shape[0],
+        left=xmin,
+        bottom=ymin,
+        right=xmax,
+        top=ymax,
+    )
+
+    dst = np.zeros((dst_height, dst_width), dtype=np.float32)
+
+    if resampling == "nearest":
+        rs = Resampling.nearest
+    else:
+        rs = Resampling.bilinear
+
+    reproject(
+        source=a.astype(np.float32),
+        destination=dst,
+        src_transform=src_transform,
+        src_crs=src_crs,
+        dst_transform=dst_transform,
+        dst_crs=dst_crs,
+        resampling=rs,
+        num_threads=2,
+    )
+
+    # Bounds in EPSG:4326 from the destination transform
+    # rasterio transform has a, e, c, f: x = a*col + c, y = e*row + f (e negative for north-up)
+    lon_min = float(dst_transform.c)
+    lat_max = float(dst_transform.f)
+    lon_max = float(dst_transform.c + dst_transform.a * dst_width)
+    lat_min = float(dst_transform.f + dst_transform.e * dst_height)
+
+    bounds = [[min(lat_min, lat_max), min(lon_min, lon_max)], [max(lat_min, lat_max), max(lon_min, lon_max)]]
+    return dst, bounds
 
 
 def render_folium(png_bytes: bytes, bounds: List[List[float]]):
@@ -356,6 +447,20 @@ with st.sidebar:
         "Mask outside Spain (is_spain==0)",
         value=True,
         help="Sets pixels to fully transparent where the is_spain feature is 0.",
+    )
+
+    st.markdown("---")
+    st.subheader("Georeferencing")
+    use_true_reprojection = st.checkbox(
+        "Reproject overlay to WGS84 (accurate)",
+        value=True,
+        help="Warps the raster from EPSG:3035 into EPSG:4326 before overlaying. Requires rasterio.",
+    )
+    reproj_resampling = st.radio(
+        "Reprojection resampling",
+        ["bilinear", "nearest"],
+        index=0,
+        help="Bilinear is smoother for probabilities; nearest is sharper for masks/labels.",
     )
 
     view = st.radio("View", ["prediction", "label", "both"], index=0)
@@ -432,7 +537,71 @@ if run:
     else:
         p2d = probs
 
-    # Visualization copy (do NOT change the underlying probabilities)
+    # --- Accurate reprojection path (warp raster into EPSG:4326) ---
+    used_reprojection = False
+    reproj_bounds = bounds
+    spain_mask_reproj = None
+
+    if use_true_reprojection:
+        if rasterio is None:
+            st.warning("Accurate reprojection requested but rasterio is not installed. Falling back to bounds-only overlay.")
+        else:
+            try:
+                # Reproject raw probabilities (NOT p_vis yet); we'll re-apply viz scaling after reprojection
+                p2d_wgs84, reproj_bounds = reproject_raster_to_wgs84(
+                    p2d,
+                    ds=ds,
+                    cfg=cfg,
+                    resampling=reproj_resampling,
+                )
+
+                # For labels and masks, prefer nearest resampling
+                y_wgs84 = None
+                is_spain_wgs84 = None
+
+                if view in ("label", "both"):
+                    y2d = y.squeeze().numpy().astype(np.float32)
+                    y_wgs84, _ = reproject_raster_to_wgs84(
+                        y2d,
+                        ds=ds,
+                        cfg=cfg,
+                        resampling="nearest",
+                    )
+
+                if mask_outside_spain:
+                    try:
+                        spain_idx = FEATURE_VARS.index("is_spain")
+                        sp = X[spain_idx].cpu().numpy().astype(np.float32)
+                        is_spain_wgs84, _ = reproject_raster_to_wgs84(
+                            sp,
+                            ds=ds,
+                            cfg=cfg,
+                            resampling="nearest",
+                        )
+                    except ValueError:
+                        is_spain_wgs84 = None
+
+                # Swap in reprojected grids
+                p2d = p2d_wgs84
+
+                if y_wgs84 is not None:
+                    # Replace y tensor for downstream mask rendering
+                    y = torch.from_numpy((y_wgs84 > 0.5).astype(np.float32)).unsqueeze(0)
+
+                # Replace X is_spain channel mask handling by keeping a separate mask array
+                spain_mask_reproj = (is_spain_wgs84 > 0.5) if is_spain_wgs84 is not None else None
+
+                used_reprojection = True
+
+            except Exception as e:
+                st.warning(f"Reprojection failed ({type(e).__name__}: {e}). Falling back to bounds-only overlay.")
+                used_reprojection = False
+                reproj_bounds = bounds
+                spain_mask_reproj = None
+    else:
+        spain_mask_reproj = None
+
+    # Recompute visualization copy after reprojection (do NOT change the underlying probabilities)
     p_vis = np.asarray(p2d, dtype=np.float32)
     p_vis = np.nan_to_num(p_vis, nan=0.0, posinf=1.0, neginf=0.0)
     p_vis = np.clip(p_vis, 0.0, 1.0)
@@ -459,18 +628,20 @@ if run:
 
     # Optional: fully hide anything outside Spain (based on the is_spain feature channel)
     if mask_outside_spain:
-        try:
-            spain_idx = FEATURE_VARS.index("is_spain")
-            spain_mask = (X[spain_idx].cpu().numpy() > 0.5)
-            rgba[..., 3] = np.where(spain_mask, rgba[..., 3], 0).astype(np.uint8)
-        except ValueError:
-            # FEATURE_VARS may not contain is_spain
-            pass
+        if spain_mask_reproj is not None:
+            rgba[..., 3] = np.where(spain_mask_reproj, rgba[..., 3], 0).astype(np.uint8)
+        else:
+            try:
+                spain_idx = FEATURE_VARS.index("is_spain")
+                spain_mask = (X[spain_idx].cpu().numpy() > 0.5)
+                rgba[..., 3] = np.where(spain_mask, rgba[..., 3], 0).astype(np.uint8)
+            except ValueError:
+                pass
 
     png = rgba_to_png_bytes(rgba)
 
     # --- Bounds tweak logic ---
-    (lat_min, lon_min), (lat_max, lon_max) = bounds
+    (lat_min, lon_min), (lat_max, lon_max) = reproj_bounds
 
     # Independent nudges for each side
     adj_lat_min = lat_min + float(nudge_south_deg)
@@ -560,7 +731,9 @@ if run:
                 "count_gt_1e-6": int(np.sum(p2d > 1e-6)),
                 "count_gt_1e-4": int(np.sum(p2d > 1e-4)),
                 "count_gt_1e-2": int(np.sum(p2d > 1e-2)),
-                "bounds": {"raw": bounds, "adjusted": adj_bounds},
+                "used_reprojection": used_reprojection,
+                "reproj_resampling": reproj_resampling,
+                "bounds": {"raw": bounds, "reprojected": reproj_bounds, "adjusted": adj_bounds},
                 "source_epsg": cfg.source_epsg,
             }
         )

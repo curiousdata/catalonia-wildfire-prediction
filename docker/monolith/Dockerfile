@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir \
     folium \
     torch \
     segmentation-models-pytorch \
+    rasterio \
     zarr \
     xarray \
     numcodecs \
