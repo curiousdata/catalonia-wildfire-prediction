@@ -281,7 +281,7 @@ with st.sidebar:
     st.caption(f"SOURCE_EPSG: {cfg.source_epsg}")
 
     show_debug = st.checkbox("Show debug", value=True)
-    show_raw_matrix = st.checkbox("Show raw probability matrix", value=False)
+    show_raw_matrix = st.checkbox("Show raw probability heatmap (no map)", value=False)
     st.markdown("---")
     st.subheader("Overlay visualization")
     viz_mode = st.radio("Scaling", ["raw", "p99_stretch"], index=1)
@@ -343,18 +343,35 @@ if run:
         st.image(png, caption="Raw overlay PNG (what Folium receives)")
 
         if show_raw_matrix:
-            st.subheader("Raw probability matrix (model output after sigmoid)")
-            # Raw as produced by inference: use the unscaled, unflipped p2d.
+            st.subheader("Raw probability heatmap (no map)")
+
+            # Raw as produced by inference: unscaled, unflipped p2d
             p_raw = np.asarray(p2d, dtype=np.float32)
-            st.caption(f"raw shape={p_raw.shape} | min={float(np.min(p_raw)):.6g} | max={float(np.max(p_raw)):.6g} | mean={float(np.mean(p_raw)):.6g}")
+            p_raw = np.nan_to_num(p_raw, nan=0.0, posinf=1.0, neginf=0.0)
+            p_raw = np.clip(p_raw, 0.0, 1.0)
 
-            # Numeric view (115x148 is manageable)
-            st.dataframe(p_raw)
+            st.caption(
+                f"raw shape={p_raw.shape} | min={float(np.min(p_raw)):.6g} | "
+                f"max={float(np.max(p_raw)):.6g} | mean={float(np.mean(p_raw)):.6g}"
+            )
 
-            # Direct grayscale view (linear mapping 0..1 -> 0..255). This is still 'as-is' values.
-            p_img = np.clip(p_raw, 0.0, 1.0)
-            p_u8 = (p_img * 255.0).astype(np.uint8)
-            st.image(p_u8, caption="Raw probs as grayscale (0..1 mapped to 0..255)")
+            # Controls specific to raw heatmap rendering
+            raw_origin = st.radio("Raw heatmap origin", ["lower", "upper"], index=0, horizontal=True)
+            raw_scale = st.radio("Raw heatmap scaling", ["linear_0_1", "p99_stretch"], index=1, horizontal=True)
+
+            p_show = p_raw.copy()
+            if raw_scale == "p99_stretch":
+                denom = float(np.percentile(p_show, 99))
+                if denom > 0:
+                    p_show = np.clip(p_show / denom, 0.0, 1.0)
+
+            if raw_origin == "lower":
+                # Streamlit images treat first row as top; matplotlib origin='lower' would flip vertically.
+                p_show = np.flipud(p_show)
+
+            # Render a red heatmap (R channel), alpha fixed for visibility
+            rgba_raw = probs_to_rgba(p_show, alpha_fixed=255)
+            st.image(rgba_to_png_bytes(rgba_raw), caption="Raw probs rendered as red heatmap")
 
         max_pos = np.unravel_index(int(np.argmax(p2d)), p2d.shape)
         r0, c0 = int(max_pos[0]), int(max_pos[1])
