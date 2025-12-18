@@ -65,10 +65,12 @@ def _get_segmentation_dataset() -> Any:
     # Import training dataset implementation (mounted into the container)
     try:
         from data.datasets import SimpleIberFireSegmentationDataset  # type: ignore
-    except Exception as e:
+    except ImportError as e:
         raise ImportError(
-            "Failed to import training dataset code. Ensure docker-compose mounts ../src as "
-            "`/workspace/train_src:ro` and sets PYTHONPATH to include `/workspace/train_src`."
+            "Failed to import `SimpleIberFireSegmentationDataset` from `data.datasets`. "
+            "Ensure docker-compose mounts ../src as `/workspace/train_src:ro`, sets PYTHONPATH "
+            "to include `/workspace/train_src`, and that the `data` package under that path "
+            "contains the expected `datasets` module."
         ) from e
 
     feature_vars = _parse_feature_vars(os.getenv("FEATURE_VARS", ""))
@@ -105,7 +107,12 @@ def _get_segmentation_dataset() -> Any:
             mode=mode,
             day_indices_path=day_indices_path,
         )
-    except TypeError:
+    except TypeError as e:
+        # Log the error for debugging before falling back to older signatures
+        logger.warning(
+            f"Dataset constructor signature mismatch (TypeError: {e}). "
+            f"Falling back to minimal required arguments."
+        )
         # Fallback for older signatures (minimal required args)
         ds = SimpleIberFireSegmentationDataset(
             zarr_path=zarr_path,

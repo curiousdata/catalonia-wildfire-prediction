@@ -21,7 +21,7 @@ st.set_page_config(page_title="Catalonia Wildfire MVP", layout="wide")
 # Helpers
 # -----------------------------
 
-def _fetch_dates() -> List[str]:
+def fetch_available_dates() -> List[str]:
     try:
         r = requests.get(f"{BACKEND_URL}/dates", timeout=30)
         r.raise_for_status()
@@ -83,7 +83,7 @@ with st.sidebar:
     st.subheader("Controls")
     st.caption(f"Backend: {BACKEND_URL}")
 
-    dates = _fetch_dates()
+    dates = fetch_available_dates()
     if not dates:
         st.warning("No dates returned from backend (/dates). Check backend is running and dataset is mounted.")
 

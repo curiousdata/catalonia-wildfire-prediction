@@ -17,7 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Keep python logs unbuffered
 ENV PYTHONUNBUFFERED=1
 
+# Create a non-root user for improved security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 WORKDIR /workspace
+
+# Ensure the workspace directory is owned by the non-root user
+RUN chown appuser:appuser /workspace
 
 # Copy monolith requirements (for reproducible builds)
 COPY docker/monolith/requirements.txt /tmp/requirements.txt
@@ -30,3 +36,6 @@ RUN pip install --no-cache-dir --prefer-binary -r /tmp/requirements.txt
 
 # Fail fast if native wheels/libs are missing
 RUN python -c "import rasterio; import pyproj; print('rasterio', rasterio.__version__, 'pyproj', pyproj.__version__)"
+
+# Switch to non-root user for running the application
+USER appuser
