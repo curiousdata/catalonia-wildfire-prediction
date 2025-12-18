@@ -361,6 +361,52 @@ with st.sidebar:
     view = st.radio("View", ["prediction", "label", "both"], index=0)
     run = st.button("Render")
 
+    st.markdown("---")
+    st.subheader("Bounds tweak")
+    st.caption("Manual alignment (degrees). Positive values: N/S move inward; W/E move inward.")
+
+    nudge_north_deg = st.slider(
+        "Nudge north (top)  Δlat",  # applied to lat_max
+        min_value=-3.0,
+        max_value=3.0,
+        value=0.0,
+        step=0.05,
+        format="%.2f",
+        help="Adds to lat_max. Use negative to move top edge DOWN.",
+    )
+    nudge_south_deg = st.slider(
+        "Nudge south (bottom) Δlat",  # applied to lat_min
+        min_value=-3.0,
+        max_value=3.0,
+        value=0.0,
+        step=0.05,
+        format="%.2f",
+        help="Adds to lat_min. Use positive to move bottom edge UP.",
+    )
+    nudge_west_deg = st.slider(
+        "Nudge west (left)  Δlon",  # applied to lon_min
+        min_value=-3.0,
+        max_value=3.0,
+        value=0.0,
+        step=0.05,
+        format="%.2f",
+        help="Adds to lon_min. Use positive to move left edge EAST.",
+    )
+    nudge_east_deg = st.slider(
+        "Nudge east (right) Δlon",  # applied to lon_max
+        min_value=-3.0,
+        max_value=3.0,
+        value=0.0,
+        step=0.05,
+        format="%.2f",
+        help="Adds to lon_max. Use negative to move right edge WEST.",
+    )
+
+    # Safety: prevent inverted bounds
+    if nudge_south_deg + 1e-9 >= (nudge_north_deg + (0.0)):
+        # This check is only meaningful relative to real bounds; we'll clamp after computing adj_bounds too.
+        pass
+
 with st.spinner("Loading dataset + model (cached)..."):
     ds = load_dataset(cfg)
     model = load_model(cfg)
@@ -422,6 +468,25 @@ if run:
             pass
 
     png = rgba_to_png_bytes(rgba)
+
+    # --- Bounds tweak logic ---
+    (lat_min, lon_min), (lat_max, lon_max) = bounds
+
+    # Independent nudges for each side
+    adj_lat_min = lat_min + float(nudge_south_deg)
+    adj_lat_max = lat_max + float(nudge_north_deg)
+    adj_lon_min = lon_min + float(nudge_west_deg)
+    adj_lon_max = lon_max + float(nudge_east_deg)
+
+    # Safety: avoid inverted/degenerate bounds
+    if adj_lat_max <= adj_lat_min:
+        mid = 0.5 * (adj_lat_min + adj_lat_max)
+        adj_lat_min, adj_lat_max = mid - 0.1, mid + 0.1
+    if adj_lon_max <= adj_lon_min:
+        mid = 0.5 * (adj_lon_min + adj_lon_max)
+        adj_lon_min, adj_lon_max = mid - 0.1, mid + 0.1
+
+    adj_bounds = [[adj_lat_min, adj_lon_min], [adj_lat_max, adj_lon_max]]
 
     if show_debug:
         st.subheader("Debug")
@@ -495,13 +560,13 @@ if run:
                 "count_gt_1e-6": int(np.sum(p2d > 1e-6)),
                 "count_gt_1e-4": int(np.sum(p2d > 1e-4)),
                 "count_gt_1e-2": int(np.sum(p2d > 1e-2)),
-                "bounds": bounds,
+                "bounds": {"raw": bounds, "adjusted": adj_bounds},
                 "source_epsg": cfg.source_epsg,
             }
         )
 
     st.subheader(f"Map for {date} ({view})")
-    m = render_folium(png, bounds)
+    m = render_folium(png, adj_bounds)
     st.components.v1.html(m.get_root().render(), height=650, scrolling=True)
 else:
     st.info("Pick a date + view, then click **Render**.")
