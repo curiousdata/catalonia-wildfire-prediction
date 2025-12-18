@@ -199,7 +199,12 @@ def find_index_by_date(ds: SimpleIberFireSegmentationDataset, date_str: str) -> 
     raise ValueError(f"Date not found in dataset: {date_str}")
 
 
-def probs_to_rgba(prob: np.ndarray, *, alpha_fixed: int | None = 255) -> np.ndarray:
+def probs_to_rgba(
+    prob: np.ndarray,
+    *,
+    alpha_fixed: int | None = 255,
+    min_visible_prob: float = 1e-4,
+) -> np.ndarray:
     p = np.asarray(prob, dtype=np.float32)
     p = np.nan_to_num(p, nan=0.0, posinf=1.0, neginf=0.0)
     p = np.clip(p, 0.0, 1.0)
@@ -208,7 +213,7 @@ def probs_to_rgba(prob: np.ndarray, *, alpha_fixed: int | None = 255) -> np.ndar
 
     # Treat (near) zero probabilities as fully transparent.
     # This avoids faint red haze from tiny positive values.
-    eps = 1e-6
+    eps = float(min_visible_prob)
 
     if alpha_fixed is None:
         # Alpha proportional to probability
@@ -332,6 +337,23 @@ with st.sidebar:
     viz_mode = st.radio("Scaling", ["raw", "p99_stretch"], index=1)
     alpha_mode = st.radio("Alpha", ["fixed_semi", "scaled"], index=0)
 
+    st.markdown("**Transparency**")
+    min_visible_prob = st.slider(
+        "Hide probabilities below",
+        min_value=0.0,
+        max_value=0.01,
+        value=1e-4,
+        step=1e-4,
+        format="%.4f",
+        help="Pixels with probability <= this value will be fully transparent (helps remove near-zero dark haze).",
+    )
+
+    mask_outside_spain = st.checkbox(
+        "Mask outside Spain (is_spain==0)",
+        value=True,
+        help="Sets pixels to fully transparent where the is_spain feature is 0.",
+    )
+
     view = st.radio("View", ["prediction", "label", "both"], index=0)
     run = st.button("Render")
 
@@ -376,11 +398,24 @@ if run:
     rgba = np.zeros((p2d.shape[0], p2d.shape[1], 4), dtype=np.uint8)
 
     if view in ("prediction", "both"):
-        rgba = alpha_over(rgba, probs_to_rgba(p_vis, alpha_fixed=alpha_fixed))
+        rgba = alpha_over(
+            rgba,
+            probs_to_rgba(p_vis, alpha_fixed=alpha_fixed, min_visible_prob=min_visible_prob),
+        )
 
     if view in ("label", "both"):
         gt = y.squeeze().numpy()
         rgba = alpha_over(rgba, mask_to_rgba(gt, color="blue"))
+
+    # Optional: fully hide anything outside Spain (based on the is_spain feature channel)
+    if mask_outside_spain:
+        try:
+            spain_idx = FEATURE_VARS.index("is_spain")
+            spain_mask = (X[spain_idx].cpu().numpy() > 0.5)
+            rgba[..., 3] = np.where(spain_mask, rgba[..., 3], 0).astype(np.uint8)
+        except ValueError:
+            # FEATURE_VARS may not contain is_spain
+            pass
 
     png = rgba_to_png_bytes(rgba)
 
@@ -416,7 +451,7 @@ if run:
                 p_show = np.flipud(p_show)
 
             # Render a red heatmap (R channel), alpha fixed for visibility
-            rgba_raw = probs_to_rgba(p_show, alpha_fixed=255)
+            rgba_raw = probs_to_rgba(p_show, alpha_fixed=255, min_visible_prob=min_visible_prob)
             st.image(rgba_to_png_bytes(rgba_raw), caption="Raw probs rendered as red heatmap")
 
         max_pos = np.unravel_index(int(np.argmax(p2d)), p2d.shape)
