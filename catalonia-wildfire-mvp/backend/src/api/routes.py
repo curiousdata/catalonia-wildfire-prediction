@@ -57,7 +57,7 @@ def health() -> dict:
 @router.get("/dates", response_model=DatesResponse)
 def dates() -> DatesResponse:
     """Return available dates the system can serve (for the Streamlit date picker)."""
-    if list_available_dates is None:
+    if list_available_dates is None or not callable(list_available_dates):
         return DatesResponse(dates=[])
 
     try:
@@ -74,7 +74,7 @@ def map_overlay(
     view: ViewMode = Query(ViewMode.prediction, description="prediction | label | both"),
 ) -> MapResponse:
     """Return a map-ready overlay (base64 PNG + lat/lon bounds) for Folium."""
-    if build_map_overlay is None:
+    if build_map_overlay is None or not callable(build_map_overlay):
         raise HTTPException(
             status_code=501,
             detail="Map overlay inference is not wired yet. Implement build_map_overlay() in inference/predict.py.",

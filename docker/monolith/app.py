@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import base64
+import io
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
+import folium
 import numpy as np
 import streamlit as st
 import torch
@@ -16,7 +18,7 @@ try:
     import rasterio
     from rasterio.transform import from_bounds
     from rasterio.warp import calculate_default_transform, reproject, Resampling
-except Exception:  # pragma: no cover
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
     rasterio = None
     from_bounds = None
     calculate_default_transform = None
@@ -159,6 +161,8 @@ def load_model(cfg: Cfg) -> torch.nn.Module:
     device = torch.device(cfg.torch_device)
 
     # Match the notebook/training architecture exactly
+    # Note: decoder_dropout is not specified here because it only affects training,
+    # not inference. The loaded weights already reflect dropout's effects during training.
     in_channels = len(FEATURE_VARS)
     m = smp.Unet(
         encoder_name="resnet34",
@@ -172,20 +176,23 @@ def load_model(cfg: Cfg) -> torch.nn.Module:
     # We want a pure state_dict for .pth checkpoints, but users may accidentally point to a TorchScript archive.
     try:
         state = torch.load(str(model_file), map_location=device, weights_only=True)
-    except RuntimeError as e:
-        msg = str(e)
-        if "TorchScript archives" in msg or "weights_only=True" in msg and "TorchScript" in msg:
-            # The file is actually a TorchScript archive; fall back gracefully.
+    except RuntimeError:
+        # The failure may indicate that the file is actually a TorchScript archive.
+        try:
+            scripted = torch.jit.load(str(model_file), map_location=device)
+        except Exception:
+            # Broad exception handling is intentional here: we're in a fallback path after
+            # both weights_only=True and TorchScript loading failed. This catches any unexpected
+            # file format issues. Final fallback: retry with weights_only=False (trusted local artifact)
+            state = torch.load(str(model_file), map_location=device, weights_only=False)
+        else:
+            # The file is a TorchScript archive; fall back gracefully.
             st.warning(
                 f"Model file '{model_file.name}' appears to be a TorchScript archive. "
                 "Loading with torch.jit.load(). If you intended to use a .pth state_dict, set MODEL_FILE to the correct .pth checkpoint."
             )
-            scripted = torch.jit.load(str(model_file), map_location=device)
             scripted.eval()
             return scripted
-
-        # Non-TorchScript pickle: retry with weights_only=False (trusted local artifact)
-        state = torch.load(str(model_file), map_location=device, weights_only=False)
 
     # Be tolerant if the checkpoint is wrapped
     if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"], dict):
@@ -281,8 +288,6 @@ def alpha_over(bottom: np.ndarray, top: np.ndarray) -> np.ndarray:
 
 def rgba_to_png_bytes(rgba: np.ndarray) -> bytes:
     img = Image.fromarray(rgba, mode="RGBA")
-    import io
-
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -396,8 +401,6 @@ def reproject_raster_to_wgs84(
 
 
 def render_folium(png_bytes: bytes, bounds: List[List[float]]):
-    import folium
-
     (lat_min, lon_min), (lat_max, lon_max) = bounds
     center = [(lat_min + lat_max) / 2, (lon_min + lon_max) / 2]
 
@@ -514,11 +517,6 @@ with st.sidebar:
         help="Adds to lon_max. Use negative to move right edge WEST.",
     )
 
-    # Safety: prevent inverted bounds
-    if nudge_south_deg + 1e-9 >= (nudge_north_deg + (0.0)):
-        # This check is only meaningful relative to real bounds; we'll clamp after computing adj_bounds too.
-        pass
-
 with st.spinner("Loading dataset + model (cached)..."):
     ds = load_dataset(cfg)
     model = load_model(cfg)
@@ -565,7 +563,7 @@ if run:
     # --- Accurate reprojection path (warp raster into EPSG:4326) ---
     used_reprojection = False
     reproj_bounds = bounds
-    spain_mask_reproj = None
+    spain_mask_wgs84 = None
 
     if use_true_reprojection:
         if rasterio is None:
@@ -614,7 +612,7 @@ if run:
                     y = torch.from_numpy((y_wgs84 > 0.5).astype(np.float32)).unsqueeze(0)
 
                 # Replace X is_spain channel mask handling by keeping a separate mask array
-                spain_mask_reproj = (is_spain_wgs84 > 0.5) if is_spain_wgs84 is not None else None
+                spain_mask_wgs84 = (is_spain_wgs84 > 0.5) if is_spain_wgs84 is not None else None
 
                 used_reprojection = True
 
@@ -622,9 +620,9 @@ if run:
                 st.warning(f"Reprojection failed ({type(e).__name__}: {e}). Falling back to bounds-only overlay.")
                 used_reprojection = False
                 reproj_bounds = bounds
-                spain_mask_reproj = None
+                spain_mask_wgs84 = None
     else:
-        spain_mask_reproj = None
+        spain_mask_wgs84 = None
 
     # Recompute visualization copy after reprojection (do NOT change the underlying probabilities)
     p_vis = np.asarray(p2d, dtype=np.float32)
@@ -653,14 +651,16 @@ if run:
 
     # Optional: fully hide anything outside Spain (based on the is_spain feature channel)
     if mask_outside_spain:
-        if spain_mask_reproj is not None:
-            rgba[..., 3] = np.where(spain_mask_reproj, rgba[..., 3], 0).astype(np.uint8)
+        if spain_mask_wgs84 is not None:
+            rgba[..., 3] = np.where(spain_mask_wgs84, rgba[..., 3], 0).astype(np.uint8)
         else:
             try:
                 spain_idx = FEATURE_VARS.index("is_spain")
                 spain_mask = (X[spain_idx].cpu().numpy() > 0.5)
                 rgba[..., 3] = np.where(spain_mask, rgba[..., 3], 0).astype(np.uint8)
             except ValueError:
+                # "is_spain" feature not available; skip outside-Spain masking and
+                # fall back to showing the unmasked visualization.
                 pass
 
     png = rgba_to_png_bytes(rgba)

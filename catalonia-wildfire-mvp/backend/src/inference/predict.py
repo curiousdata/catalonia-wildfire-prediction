@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import base64
 import io
-import json
 import os
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 
@@ -66,10 +65,12 @@ def _get_segmentation_dataset() -> Any:
     # Import training dataset implementation (mounted into the container)
     try:
         from data.datasets import SimpleIberFireSegmentationDataset  # type: ignore
-    except Exception as e:
+    except ImportError as e:
         raise ImportError(
-            "Failed to import training dataset code. Ensure docker-compose mounts ../src as "
-            "`/workspace/train_src:ro` and sets PYTHONPATH to include `/workspace/train_src`."
+            "Failed to import `SimpleIberFireSegmentationDataset` from `data.datasets`. "
+            "Ensure docker-compose mounts ../src as `/workspace/train_src:ro`, sets PYTHONPATH "
+            "to include `/workspace/train_src`, and that the `data` package under that path "
+            "contains the expected `datasets` module."
         ) from e
 
     feature_vars = _parse_feature_vars(os.getenv("FEATURE_VARS", ""))
@@ -106,7 +107,12 @@ def _get_segmentation_dataset() -> Any:
             mode=mode,
             day_indices_path=day_indices_path,
         )
-    except TypeError:
+    except TypeError as e:
+        # Log the error for debugging before falling back to older signatures
+        logger.warning(
+            f"Dataset constructor signature mismatch (TypeError: {e}). "
+            f"Falling back to minimal required arguments."
+        )
         # Fallback for older signatures (minimal required args)
         ds = SimpleIberFireSegmentationDataset(
             zarr_path=zarr_path,
@@ -431,64 +437,3 @@ def _resolve_clc_var(ds: Any, base: str, year: int) -> str:
     nearest = min(available_years, key=lambda yy: abs(yy - year))
     return candidates[nearest]
 
-
-def _resolve_popdens_var(ds: Any, year: int) -> str:
-    """Resolve popdens base feature to the nearest available popdens_<YYYY> variable."""
-    year_map: Dict[int, str] = {}
-    for name in list(getattr(ds, "data_vars", {}).keys()):
-        s = str(name)
-        if not s.startswith("popdens_"):
-            continue
-        parts = s.split("_")
-        if len(parts) != 2:
-            continue
-        try:
-            yy = int(parts[1])
-        except ValueError:
-            continue
-        year_map[yy] = s
-
-    if not year_map:
-        raise KeyError("popdens base feature requested but no popdens_YYYY variables found in dataset")
-
-    available_years = sorted(year_map.keys())
-    nearest = min(available_years, key=lambda yy: abs(yy - year))
-    return year_map[nearest]
-
-
-def _get_feature_array(*, ds: Any, day_index: int, feature: str) -> np.ndarray:
-    """Fetch a 2D [H,W] feature array for a given day index.
-
-    Mirrors training-time behavior:
-      - dynamic vars (with time dim)
-      - static vars (no time dim)
-      - year-aware CLC base vars: CLC_<suffix> -> CLC_<year>_<suffix>
-      - year-aware popdens base var: popdens -> popdens_<YYYY>
-    """
-    # Direct match in dataset
-    if feature in ds:
-        da = ds[feature]
-        if hasattr(da, "dims") and "time" in da.dims:
-            a = da.isel(time=day_index).values
-        else:
-            a = da.values
-        a = np.asarray(a)
-        return np.squeeze(a)
-
-    # Year-aware CLC base
-    if feature.startswith("CLC_"):
-        year = _year_for_index(ds, day_index)
-        resolved = _resolve_clc_var(ds, feature, year)
-        a = ds[resolved].values  # static
-        a = np.asarray(a)
-        return np.squeeze(a)
-
-    # Year-aware popdens base
-    if feature == "popdens":
-        year = _year_for_index(ds, day_index)
-        resolved = _resolve_popdens_var(ds, year)
-        a = ds[resolved].values  # static
-        a = np.asarray(a)
-        return np.squeeze(a)
-
-    raise KeyError(f"Feature '{feature}' not found and not recognized as a CLC/popdens base")
