@@ -90,7 +90,7 @@ This project builds upon the work of several researchers and open-source project
 - **FastAPI & Streamlit**: Web application framework
 
 ### Research Papers
-- **Long-Tailed Classification via Logit Adjustment**: Menon, A. K., Jayasumana, S., Rawat, A. S., Jain, H., Veit, A., & Kumar, S. (2020). Long-tail learning via logit adjustment. arXiv preprint arXiv:2007.07314. https://arxiv.org/abs/2007.07314
+- **Long-tail learning via logit adjustment**: Menon, A. K., Jayasumana, S., Rawat, A. S., Jain, H., Veit, A., & Kumar, S. (2020). arXiv preprint arXiv:2007.07314. https://arxiv.org/abs/2007.07314
   - Used for addressing class imbalance in the wildfire prediction model through logit-adjusted loss
 
 ## License
