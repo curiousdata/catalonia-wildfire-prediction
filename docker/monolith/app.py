@@ -209,7 +209,8 @@ def probs_to_rgba(
     p = np.nan_to_num(p, nan=0.0, posinf=1.0, neginf=0.0)
     p = np.clip(p, 0.0, 1.0)
 
-    red = (p * 255.0).astype(np.uint8)
+    # Pure red overlay; intensity is conveyed via alpha (fade), not by darkening RGB.
+    red = np.where(p > 0, 255, 0).astype(np.uint8)
 
     # Treat (near) zero probabilities as fully transparent.
     # This avoids faint red haze from tiny positive values.
@@ -220,9 +221,9 @@ def probs_to_rgba(
         alpha = (p * 255.0).astype(np.uint8)
         alpha = np.where(p > eps, alpha, 0).astype(np.uint8)
     else:
-        # Constant alpha for any non-trivial probability
-        a = int(np.clip(alpha_fixed, 0, 255))
-        alpha = np.where(p > eps, a, 0).astype(np.uint8)
+        # Fade with probability up to a maximum alpha (semi-transparent cap)
+        a = float(np.clip(alpha_fixed, 0, 255))
+        alpha = np.where(p > eps, np.clip(p * a, 0.0, a), 0.0).astype(np.uint8)
 
     rgba = np.zeros((p.shape[0], p.shape[1], 4), dtype=np.uint8)
     rgba[..., 0] = red
@@ -338,15 +339,18 @@ with st.sidebar:
     alpha_mode = st.radio("Alpha", ["fixed_semi", "scaled"], index=0)
 
     st.markdown("**Transparency**")
-    min_visible_prob = st.slider(
-        "Hide probabilities below",
-        min_value=0.0,
-        max_value=0.01,
-        value=1e-4,
-        step=1e-4,
-        format="%.4f",
-        help="Pixels with probability <= this value will be fully transparent (helps remove near-zero dark haze).",
+    # Log-ish slider: choose an exponent, then compute threshold = 10**exp
+    exp = st.slider(
+        "Hide probabilities below (log10)",
+        min_value=-3.0,
+        max_value=-1.0,
+        value=-2.0,
+        step=0.05,
+        format="%.2f",
+        help="Threshold = 10^exp. Pixels with probability <= threshold are fully transparent.",
     )
+    min_visible_prob = float(10 ** exp)
+    st.caption(f"Threshold: {min_visible_prob:.6f}")
 
     mask_outside_spain = st.checkbox(
         "Mask outside Spain (is_spain==0)",
@@ -469,7 +473,12 @@ if run:
             denom_c = float(np.percentile(crop_vis, 99))
             if denom_c > 0:
                 crop_vis = np.clip(crop_vis / denom_c, 0.0, 1.0)
-        st.image(rgba_to_png_bytes(probs_to_rgba(crop_vis, alpha_fixed=alpha_fixed)), caption="Zoomed crop around max")
+        st.image(
+            rgba_to_png_bytes(
+                probs_to_rgba(crop_vis, alpha_fixed=alpha_fixed, min_visible_prob=min_visible_prob)
+            ),
+            caption="Zoomed crop around max",
+        )
 
         st.json(
             {
