@@ -422,7 +422,7 @@ with st.sidebar:
     st.caption(f"Device: {cfg.torch_device}")
     st.caption(f"SOURCE_EPSG: {cfg.source_epsg}")
 
-    show_debug = st.checkbox("Show debug", value=True)
+    show_debug = st.checkbox("Show debug", value=False)
     show_raw_matrix = st.checkbox("Show raw probability heatmap (no map)", value=False)
     st.markdown("---")
     st.subheader("Overlay visualization")
