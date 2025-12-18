@@ -157,8 +157,24 @@ def load_model(cfg: Cfg) -> torch.nn.Module:
         activation=None,
     ).to(device)
 
-    # Load state_dict checkpoint (same as notebook)
-    state = torch.load(str(model_file), map_location=device)
+    # Load checkpoint. In PyTorch 2.6, torch.load defaults to weights_only=True.
+    # We want a pure state_dict for .pth checkpoints, but users may accidentally point to a TorchScript archive.
+    try:
+        state = torch.load(str(model_file), map_location=device, weights_only=True)
+    except RuntimeError as e:
+        msg = str(e)
+        if "TorchScript archives" in msg or "weights_only=True" in msg and "TorchScript" in msg:
+            # The file is actually a TorchScript archive; fall back gracefully.
+            st.warning(
+                f"Model file '{model_file.name}' appears to be a TorchScript archive. "
+                "Loading with torch.jit.load(). If you intended to use a .pth state_dict, set MODEL_FILE to the correct .pth checkpoint."
+            )
+            scripted = torch.jit.load(str(model_file), map_location=device)
+            scripted.eval()
+            return scripted
+
+        # Non-TorchScript pickle: retry with weights_only=False (trusted local artifact)
+        state = torch.load(str(model_file), map_location=device, weights_only=False)
 
     # Be tolerant if the checkpoint is wrapped
     if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"], dict):
