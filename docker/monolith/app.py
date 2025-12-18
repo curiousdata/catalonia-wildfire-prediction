@@ -11,6 +11,7 @@ import streamlit as st
 import torch
 from PIL import Image
 from pyproj import Transformer
+import segmentation_models_pytorch as smp
 
 from src.data.datasets import SimpleIberFireSegmentationDataset
 
@@ -34,7 +35,7 @@ def get_cfg() -> Cfg:
         zarr_path=os.getenv("IBERFIRE_ZARR_PATH", "/app/data/gold/IberFire_coarse8_time1.zarr"),
         stats_path=os.getenv("NORM_STATS_PATH", "/app/stats/simple_iberfire_stats_train.json"),
         model_path=os.getenv("MODEL_PATH", "/app/models"),
-        model_file=os.getenv("MODEL_FILE", "resnet34_v9.torchscript"),
+        model_file=os.getenv("MODEL_FILE", "resnet34_v9.pth"),
         label_var=os.getenv("LABEL_VAR", "is_fire"),
         lead_time=int(os.getenv("LEAD_TIME", "1")),
         time_start=os.getenv("TIME_START", "2008-01-01"),
@@ -139,13 +140,34 @@ def load_dataset(cfg: Cfg) -> SimpleIberFireSegmentationDataset:
 
 
 @st.cache_resource(show_spinner=False)
-def load_model(cfg: Cfg) -> torch.jit.ScriptModule:
+def load_model(cfg: Cfg) -> torch.nn.Module:
     model_file = Path(cfg.model_path) / cfg.model_file
     if not model_file.exists():
         raise FileNotFoundError(f"Model file not found: {model_file}")
 
     device = torch.device(cfg.torch_device)
-    m = torch.jit.load(str(model_file), map_location=device)
+
+    # Match the notebook/training architecture exactly
+    in_channels = len(FEATURE_VARS)
+    m = smp.Unet(
+        encoder_name="resnet34",
+        encoder_weights=None,
+        in_channels=in_channels,
+        classes=1,
+        activation=None,
+    ).to(device)
+
+    # Load state_dict checkpoint (same as notebook)
+    state = torch.load(str(model_file), map_location=device)
+
+    # Be tolerant if the checkpoint is wrapped
+    if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"], dict):
+        state = state["state_dict"]
+
+    if not isinstance(state, dict):
+        raise ValueError(f"Expected a state_dict dict in {model_file}, got {type(state)}")
+
+    m.load_state_dict(state, strict=True)
     m.eval()
     return m
 
