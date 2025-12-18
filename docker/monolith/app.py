@@ -394,7 +394,7 @@ def render_folium(png_bytes: bytes, bounds: List[List[float]]):
     (lat_min, lon_min), (lat_max, lon_max) = bounds
     center = [(lat_min + lat_max) / 2, (lon_min + lon_max) / 2]
 
-    m = folium.Map(location=center, zoom_start=8, tiles="OpenTopoMap")
+    m = folium.Map(location=center, zoom_start=8, tiles="CartoDB Voyager")
     data_url = "data:image/png;base64," + base64.b64encode(png_bytes).decode("utf-8")
 
     folium.raster_layers.ImageOverlay(
@@ -410,7 +410,8 @@ def render_folium(png_bytes: bytes, bounds: List[List[float]]):
 
 
 st.set_page_config(page_title="Catalonia Wildfire Monolith MVP", layout="wide")
-st.title("Catalonia Wildfire Prediction (Monolith MVP)")
+st.title("Wildfire prediction interactive map")
+st.markdown("Predicting wildfire risk in Spain using satellite and meteorological data.")
 
 cfg = get_cfg()
 

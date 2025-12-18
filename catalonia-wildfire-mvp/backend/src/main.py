@@ -5,7 +5,6 @@ from fastapi import FastAPI
 # Canonical router import per enforced structure
 from .api.routes import router as api_router
 
-
 app = FastAPI(
     title="Catalonia Wildfire Prediction API",
     version="0.1.0",
