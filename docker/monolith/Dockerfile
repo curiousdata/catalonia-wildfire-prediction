@@ -3,6 +3,15 @@ FROM python:3.11-slim
 # Basic OS deps (folium uses leaflet in HTML; pillow for PNG; numpy/scipy for ML)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    gcc \
+    g++ \
+    gdal-bin \
+    libgdal-dev \
+    proj-bin \
+    proj-data \
+    libproj-dev \
+    libgeos-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Keep python logs unbuffered
@@ -28,6 +37,9 @@ RUN pip install --no-cache-dir \
     numcodecs \
     pyproj \
     tqdm
+
+# Fail fast if native wheels/libs are missing
+RUN python -c "import rasterio; import pyproj; print('rasterio', rasterio.__version__, 'pyproj', pyproj.__version__)"
 
 # NOTE:
 # If your src/data/datasets.py needs additional packages (pandas, scipy, etc.),
