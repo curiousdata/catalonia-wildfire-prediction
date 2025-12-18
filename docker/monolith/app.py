@@ -661,6 +661,8 @@ if run:
                 spain_mask = (X[spain_idx].cpu().numpy() > 0.5)
                 rgba[..., 3] = np.where(spain_mask, rgba[..., 3], 0).astype(np.uint8)
             except ValueError:
+                # "is_spain" feature not available; skip outside-Spain masking and
+                # fall back to showing the unmasked visualization.
                 pass
 
     png = rgba_to_png_bytes(rgba)
