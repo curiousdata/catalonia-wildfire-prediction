@@ -4,9 +4,9 @@ A machine learning project for predicting wildfire risks in Catalonia using deep
 
 ## Overview
 
-This project uses convolutional neural networks (CNNs) to perform spatial segmentation and predict wildfire risks in Catalonia. The system includes:
+This project uses convolutional neural networks (CNNs), specifically **U-Net architecture with various encoders**, to perform spatial segmentation and predict wildfire risks in Catalonia. The system includes:
 - Data processing pipelines to convert NetCDF data to Zarr format
-- CNN-based models (U-Net with various encoders) for wildfire prediction
+- U-Net based models with different encoders (ResNet34, etc.) for wildfire prediction
 - A web-based MVP application for visualizing predictions
 - MLflow integration for experiment tracking
 
@@ -32,41 +32,106 @@ catalonia-wildfire-prediction/
 
 ## Quick Start
 
-### Prerequisites
+This section is divided into three parts based on your use case:
+1. **Running the Application** - For users who just want to try the wildfire prediction app
+2. **Training the Model** - For users who want to train the model on the existing dataset
+3. **Full Experimentation** - For users who want to experiment with data processing, feature engineering, and model architecture
+
+### Storage Requirements
+**Important:** The gold dataset and latest model are managed via Git LFS. Ensure you have enough storage: the dataset and model are approximately **1 GB in total**.
+
+---
+
+### Part 1: Running the Application
+
+If you just want to start the wildfire prediction application:
+
+**Prerequisites:**
+- Docker and Docker Compose
+- Git LFS (for downloading the dataset and model)
+
+**Steps:**
+1. Fork the repository
+2. Clone your fork:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/catalonia-wildfire-prediction.git
+   cd catalonia-wildfire-prediction
+   ```
+3. Start the application:
+   ```bash
+   docker-compose up --build
+   ```
+4. Access the application at [http://localhost:8501](http://localhost:8501)
+
+The gold dataset (`data/gold/IberFire_coarse32_time1.zarr`) and the latest model (`models/resnet34_v9.pth`) are managed by Git LFS and will be downloaded automatically when you clone the repository.
+
+---
+
+### Part 2: Training the Model
+
+If you want to train the U-Net model on the existing gold dataset:
+
+**Prerequisites:**
 - Python 3.13+
-- Docker and Docker Compose (for the monolith application)
 - CUDA- or MPS-compatible GPU (recommended for training)
+- The gold dataset (automatically available via Git LFS)
 
-### Installation
-
+**Steps:**
 1. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Start MLflow server (optional, for experiment tracking):**
+2. **Start MLflow UI in a separate terminal (for tracking model metrics):**
    ```bash
    mlflow server --host 0.0.0.0 --port 5001
    ```
    Access MLflow UI at [http://localhost:5001](http://localhost:5001)
 
-### Training a Model
+3. **Train the model:**
+   ```bash
+   python scripts/train.py --model_name resnet34_v10 --epochs 50
+   ```
 
-Train a CNN model for wildfire prediction:
-```bash
-python scripts/train.py --model_name resnet34_v8 --epochs 50
-```
+The training script uses the gold dataset (`data/gold/IberFire_coarse32_time1.zarr`) and logs all metrics to MLflow for experiment tracking.
 
-The training script uses the IberFire dataset in Zarr format and logs metrics to MLflow.
+---
 
-### Running the Web Application
+### Part 3: Full Experimentation
 
-The monolith application can be started using Docker Compose from the project root:
-```bash
-docker-compose up --build
-```
+If you want to experiment with the dataset, coarsening, feature engineering, etc.:
 
-Access the application at [http://localhost:8501](http://localhost:8501)
+**Prerequisites:**
+- Python 3.13+
+- Significant disk space (~20-50 GB for raw NetCDF data)
+- Computer connected to power (overnight processing recommended)
+
+**Steps:**
+1. **Download the original NetCDF dataset from Zenodo:**
+   - Visit the IberFire dataset page on Zenodo
+   - Download the NetCDF files
+   - Place them in `data/bronze/`
+
+2. **Convert NetCDF to Zarr format:**
+   ```bash
+   python scripts/netcdf_to_zarr.py
+   ```
+   **Note:** This conversion is best done overnight with your computer connected to power. In the future, this dataset will be published in Zarr format directly.
+
+3. **Customize chunking and compression (optional):**
+   You are free to change the chunking and compression settings in the scripts. To match the access pattern used in this project (1 image at a time fed into U-Net):
+   ```bash
+   python scripts/rechunk.py
+   ```
+
+4. **Apply coarsening and max pooling to the target:**
+   ```bash
+   python scripts/coarsen.py
+   ```
+
+5. After processing, follow **Part 2** to train your models with the new dataset configurations.
+
+---
 
 ## Data Processing
 
@@ -74,6 +139,10 @@ The project includes scripts for processing the IberFire dataset:
 - `netcdf_to_zarr.py`: Convert NetCDF to Zarr format for efficient data access
 - `coarsen.py`: Reduce spatial resolution for faster experimentation
 - `rechunk.py`: Optimize data chunking for processing
+
+## Collaboration
+
+Interested in contributing to this project or have questions? Feel free to reach out at **vladimv.morozov@gmail.com**.
 
 ## Acknowledgments
 
