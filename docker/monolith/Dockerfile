@@ -1,48 +1,47 @@
-FROM python:alpine
+FROM python:3.11-slim
 
 # Basic OS deps (folium uses leaflet in HTML; pillow for PNG; numpy/scipy for ML)
-RUN apk add --no-cache \
-    build-base \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     gcc \
     g++ \
-    gdal \
-    gdal-dev \
-    proj \
-    proj-dev \
-    geos \
-    geos-dev \
+    gdal-bin \
+    libgdal-dev \
+    proj-bin \
+    proj-data \
+    libproj-dev \
+    libgeos-dev \
     ca-certificates \
-    # Add these for numpy/scipy performance:
-    openblas-dev \
-    lapack-dev \
-    # For Pillow:
-    jpeg-dev \
-    zlib-dev \
-    # Cleanup build deps later if needed
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Keep python logs unbuffered
 ENV PYTHONUNBUFFERED=1
 
-# Create a non-root user for improved security (Alpine uses addgroup/adduser)
-RUN addgroup -S appuser && adduser -S appuser -G appuser
+# Create a non-root user for improved security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Set working directory
-WORKDIR /app
+WORKDIR /workspace
 
-# Copy requirements first for better layer caching
-COPY requirements.txt .
+# Ensure the workspace directory is owned by the non-root user
+RUN chown appuser:appuser /workspace
 
-# Install Python packages (--no-cache-dir saves space)
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy monolith requirements (for reproducible builds)
+COPY docker/monolith/requirements.txt /tmp/requirements.txt
 
-# Copy application code
-COPY . .
+# Install runtime dependencies (prefer wheels)
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install python deps for the monolith app
+RUN pip install --no-cache-dir --prefer-binary -r /tmp/requirements.txt
+
+# Fail fast if native wheels/libs are missing
+RUN python -c "import rasterio; import pyproj; print('rasterio', rasterio.__version__, 'pyproj', pyproj.__version__)"
+
+# Create non-root user for running the application
+RUN addgroup --system app && adduser --system --ingroup app app
+
+# Set ownership of workspace directory
+RUN chown -R app:app /workspace
 
 # Switch to non-root user
-USER appuser
-
-# Expose port if running a web service
-EXPOSE 8000
-
-CMD ["python", "app.py"]
+USER app
