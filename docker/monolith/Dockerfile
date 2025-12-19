@@ -11,36 +11,38 @@ RUN apk add --no-cache \
     proj-dev \
     geos \
     geos-dev \
-    ca-certificates
+    ca-certificates \
+    # Add these for numpy/scipy performance:
+    openblas-dev \
+    lapack-dev \
+    # For Pillow:
+    jpeg-dev \
+    zlib-dev \
+    # Cleanup build deps later if needed
+    && rm -rf /var/cache/apk/*
 
 # Keep python logs unbuffered
 ENV PYTHONUNBUFFERED=1
 
-# Create a non-root user for improved security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Create a non-root user for improved security (Alpine uses addgroup/adduser)
+RUN addgroup -S appuser && adduser -S appuser -G appuser
 
-WORKDIR /workspace
+# Set working directory
+WORKDIR /app
 
-# Ensure the workspace directory is owned by the non-root user
-RUN chown appuser:appuser /workspace
+# Copy requirements first for better layer caching
+COPY requirements.txt .
 
-# Copy monolith requirements (for reproducible builds)
-COPY docker/monolith/requirements.txt /tmp/requirements.txt
+# Install Python packages (--no-cache-dir saves space)
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install runtime dependencies (prefer wheels)
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-
-# Install python deps for the monolith app
-RUN pip install --no-cache-dir --prefer-binary -r /tmp/requirements.txt
-
-# Fail fast if native wheels/libs are missing
-RUN python -c "import rasterio; import pyproj; print('rasterio', rasterio.__version__, 'pyproj', pyproj.__version__)"
-
-# Create non-root user for running the application
-RUN addgroup --system app && adduser --system --ingroup app app
-
-# Set ownership of workspace directory
-RUN chown -R app:app /workspace
+# Copy application code
+COPY . .
 
 # Switch to non-root user
-USER app
+USER appuser
+
+# Expose port if running a web service
+EXPOSE 8000
+
+CMD ["python", "app.py"]
