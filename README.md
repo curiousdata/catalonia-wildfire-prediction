@@ -140,9 +140,44 @@ The project includes scripts for processing the IberFire dataset:
 - `coarsen.py`: Reduce spatial resolution for faster experimentation
 - `rechunk.py`: Optimize data chunking for processing
 
-## Collaboration
+## Future Plans
 
-Interested in contributing to this project or have questions? Feel free to reach out at **vladimv.morozov@gmail.com**.
+We are actively working to improve wildfire prediction capabilities. Future directions include:
+
+- **Bigger Models**: Experimenting with larger U-Net architectures and more sophisticated encoders for improved prediction accuracy
+- **Finer Resolution**: Training models on higher spatial resolution data to capture more detailed fire risk patterns
+- **Real-Time Data Ingestion**: Implementing a pipeline for real-time data ingestion to predict fires for tomorrow based on current conditions
+
+If you're interested in contributing to any of these areas, please see the Contributing section below.
+
+## Contributing
+
+Interested in contributing to this project? We welcome contributions from the community! Here are some guidelines to get started:
+
+### How to Contribute
+
+1. **Fork the repository** and create a new branch for your feature or bug fix
+2. **Make your changes** following the existing code style and conventions
+3. **Test your changes** thoroughly to ensure they work as expected
+4. **Write clear commit messages** that describe what your changes do
+5. **Submit a pull request** with a detailed description of your changes and the problem they solve
+
+### Contribution Ideas
+
+- Work on **real-time data ingestion** for tomorrow's fire predictions
+- Experiment with **bigger models** and different architectures
+- Improve **spatial resolution** by training on finer-grained data
+- Add new features to the web application
+- Improve documentation or fix bugs
+- Create tutorials or example notebooks
+
+### Questions or Discussions
+
+If you have questions, ideas, or want to discuss potential contributions, feel free to:
+- Open an issue on GitHub
+- Reach out at **vladimv.morozov@gmail.com**
+
+We appreciate all contributions, whether it's code, documentation, bug reports, or feature suggestions!
 
 ## Acknowledgments
 
