@@ -1,6 +1,6 @@
-# Catalonia Wildfire Prediction
+# ML Wildfire Prediction
 
-A machine learning project for predicting wildfire risks in Catalonia using deep learning models trained on the **IberFire dataset**, a comprehensive datacube containing environmental, meteorological, and geographical data for Spain (the initial plan was for Catalonia only, hence the name).
+A machine learning project for predicting wildfire risks in Spain using deep learning models trained on the **IberFire dataset**, a comprehensive datacube containing environmental, meteorological, and geographical data for Spain.
 
 ## Overview
 
@@ -33,12 +33,13 @@ catalonia-wildfire-prediction/
 ## Quick Start
 
 This section is divided into three parts based on your use case:
-1. **Running the Application** - For users who just want to try the wildfire prediction app
-2. **Training the Model** - For users who want to train the model on the existing dataset
-3. **Full Experimentation** - For users who want to experiment with data processing, feature engineering, and model architecture
+1. **Running the Application** - For all users who just want to try the wildfire prediction app
+2. **Training the Model** - For ML practitioners who want to train the model on the existing dataset
+3. **Full Experimentation** - For advanced devs and ML engineers who want to experiment with data processing, feature engineering, and model architecture
 
 ### Storage Requirements
 **Important:** The gold dataset and latest model are managed via Git LFS. Ensure you have enough storage: the dataset and model are approximately **1 GB in total**.
+In case you're considering downloading the original dataset, make sure you have **at least 30 GB** available. 
 
 ---
 
@@ -108,9 +109,9 @@ If you want to experiment with the dataset, coarsening, feature engineering, etc
 
 **Steps:**
 1. **Download the original NetCDF dataset from Zenodo:**
-   - Visit the IberFire dataset page on Zenodo
-   - Download the NetCDF files
-   - Place them in `data/bronze/`
+   - Visit the IberFire dataset page on Zenodo: https://zenodo.org/records/15798999
+   - Download the NetCDF file
+   - Place it in `data/bronze/`
 
 2. **Convert NetCDF to Zarr format:**
    ```bash
