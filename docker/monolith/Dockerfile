@@ -1,18 +1,17 @@
 FROM python:alpine
 
 # Basic OS deps (folium uses leaflet in HTML; pillow for PNG; numpy/scipy for ML)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+RUN apk add --no-cache \
+    build-base \
     gcc \
     g++ \
-    gdal-bin \
-    libgdal-dev \
-    proj-bin \
-    proj-data \
-    libproj-dev \
-    libgeos-dev \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    gdal \
+    gdal-dev \
+    proj \
+    proj-dev \
+    geos \
+    geos-dev \
+    ca-certificates
 
 # Keep python logs unbuffered
 ENV PYTHONUNBUFFERED=1
