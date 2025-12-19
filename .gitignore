@@ -35,7 +35,8 @@ data/IberFire_demo.parquet
 # MLFlow metadata and artifacts
 mlruns/
 model/IberFire_demo_model.ubj
-models/
+*.torchscript
+models/resnet34_v8.pth
 
 # Datasets in NetCDF, Zarr and other formats
 *.nc
