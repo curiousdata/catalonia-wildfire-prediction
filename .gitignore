@@ -5,6 +5,8 @@ venv/
 # Do not track large local datasets
 data/IberFire.nc
 *.nc
+*.zarr
+
 
 # Byte-compiled files
 __pycache__/
@@ -31,6 +33,9 @@ dist/
 Thumbs.db
 data/IberFire_demo.csv
 data/IberFire_demo.parquet
+data/gold/IberFire_coarse8_time1.zarr
+data/silver/*.zarr
+
 
 # MLFlow metadata and artifacts
 mlruns/
@@ -40,7 +45,6 @@ models/resnet34_v8.pth
 
 # Datasets in NetCDF, Zarr and other formats
 *.nc
-*.zarr
 *.parquet
 *.csv
 *.npz
