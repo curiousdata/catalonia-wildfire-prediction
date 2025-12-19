@@ -1,6 +1,6 @@
 # Catalonia Wildfire Prediction
 
-A machine learning project for predicting wildfire risks in Catalonia using deep learning models trained on the **IberFire dataset**, a comprehensive datacube containing environmental, meteorological, and geographical data for Spain.
+A machine learning project for predicting wildfire risks in Catalonia using deep learning models trained on the **IberFire dataset**, a comprehensive datacube containing environmental, meteorological, and geographical data for Spain (the initial plan was for Catalonia only, hence the name).
 
 ## Overview
 
