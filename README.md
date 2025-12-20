@@ -58,13 +58,18 @@ If you just want to start the wildfire prediction application:
    git clone https://github.com/YOUR_USERNAME/catalonia-wildfire-prediction.git
    cd catalonia-wildfire-prediction
    ```
-3. Start the application:
+3. Unpack the gold dataset (because it's sharded, we had to archive it into one file for LFS support):
+   ```bash
+   tar -xzf data/gold/IberFire_coarse32_time1.zarr.tar.gz -C data/gold
+   ```
+   You only have to do it once.
+5. Start the application:
    ```bash
    docker-compose up --build
    ```
-4. Access the application at [http://localhost:8501](http://localhost:8501)
+6. Access the application at [http://localhost:8501](http://localhost:8501)
 
-The gold dataset (`data/gold/IberFire_coarse32_time1.zarr`) and the latest model (`models/resnet34_v9.pth`) are managed by Git LFS and will be downloaded automatically when you clone the repository.
+The archived gold dataset (`data/gold/IberFire_coarse32_time1.zarr.tar.gz`) and the latest model (`models/resnet34_v9.pth`) are managed by Git LFS and will be downloaded automatically when you clone the repository.
 
 ---
 
