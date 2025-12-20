@@ -63,7 +63,16 @@ If you just want to start the wildfire prediction application:
    git clone https://github.com/YOUR_USERNAME/catalonia-wildfire-prediction.git
    cd catalonia-wildfire-prediction
    ```
-3. Unpack the gold dataset (because it's sharded, we had to archive it into one file for LFS support):
+3. Prepare large files:
+   Make sure LFS is installed:
+   ```bash
+   git lfs install
+   ```
+   Pull model and dataset files (should have started downloading automatically, but to be sure):
+   ```bash
+   git lfs pull
+   ```
+   Unpack the gold dataset (because it's sharded, we had to archive it into one file for LFS support):
    ```bash
    tar -xzf data/gold/IberFire_coarse32_time1.zarr.tar.gz -C data/gold
    ```
@@ -74,7 +83,7 @@ If you just want to start the wildfire prediction application:
    ```
 6. Access the application at [http://localhost:8501](http://localhost:8501)
 
-The archived gold dataset (`data/gold/IberFire_coarse32_time1.zarr.tar.gz`) and the latest model (`models/resnet34_v9.pth`) are managed by Git LFS and will be downloaded automatically when you clone the repository.
+The archived gold dataset (`data/gold/IberFire_coarse32_time1.zarr.tar.gz`) and the latest model (`models/resnet34_v9.pth`) are managed by Git LFS and will be downloaded automatically when you clone the repository. When you run `git lfs pull`, you make sure this download is finished before moving on.
 
 ---
 
