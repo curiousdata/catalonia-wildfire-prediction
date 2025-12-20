@@ -37,6 +37,11 @@ This section is divided into three parts based on your use case:
 2. **Training the Model** - For ML practitioners who want to train the model on the existing dataset
 3. **Full Experimentation** - For advanced devs and ML engineers who want to experiment with data processing, feature engineering, and model architecture
 
+### Compute Requirements
+1. There are none. If you just want to start the application, the amount of CPU work is minimal.
+2. If you are training, your training will be faster if you have a powerful machine. You might need 10-11 GB of RAM for effective data streaming. Fastest training will be on machines with Apple Silicon GPU.
+3. It is preferrable that you have a powerful machine with a lot of CPU, GPU and RAM resource. Dataset's original creators recommend using a machine with at least 128 GB RAM. However, if for some reason you don't have the aforementioned machine, don't let that stop you - this project was successfully created using a single 2020 MacBook Air M1. 
+
 ### Storage Requirements
 **Important:** The gold dataset and latest model are managed via Git LFS. Ensure you have enough storage: the dataset and model are approximately **1 GB in total**.
 In case you're considering downloading the original dataset, make sure you have **at least 30 GB** available. 
@@ -79,7 +84,7 @@ If you want to train the U-Net model on the existing gold dataset:
 
 **Prerequisites:**
 - Python 3.13+
-- CUDA- or MPS-compatible GPU (recommended for training)
+- MPS-compatible GPU (recommended for training). CUDA support is planned.
 - The gold dataset (automatically available via Git LFS)
 
 **Steps:**
@@ -153,6 +158,7 @@ We are actively working to improve wildfire prediction capabilities. Future dire
 - **Bigger Models**: Experimenting with larger U-Net architectures and more sophisticated encoders for improved prediction accuracy
 - **Finer Resolution**: Training models on higher spatial resolution data to capture more detailed fire risk patterns
 - **Real-Time Data Ingestion**: Implementing a pipeline for real-time data ingestion to predict fires for tomorrow based on current conditions
+- **CUDA support**: right now the training script automatically chooses *MPS* (Metal Performance Shaders, Apple Silicon's driver for GPU training) if it's available and CPU otherwise. In the future, CUDA will also be supported.
 
 If you're interested in contributing to any of these areas, please see the Contributing section below.
 
