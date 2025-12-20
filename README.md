@@ -64,24 +64,26 @@ If you just want to start the wildfire prediction application:
    cd catalonia-wildfire-prediction
    ```
 3. Prepare large files:
-   Make sure LFS is installed:
+   
+   - Make sure LFS is installed:
    ```bash
    git lfs install
    ```
-   Pull model and dataset files (should have started downloading automatically, but to be sure):
+   - Pull model and dataset files (should have started downloading automatically, but to be sure):
    ```bash
    git lfs pull
    ```
-   Unpack the gold dataset (because it's sharded, we had to archive it into one file for LFS support):
+   - Unpack the gold dataset (because it's sharded, we had to archive it into one file for LFS support):
    ```bash
    tar -xzf data/gold/IberFire_coarse32_time1.zarr.tar.gz -C data/gold
    ```
    You only have to do it once.
-5. Start the application:
+   
+4. Start the application:
    ```bash
    docker-compose up --build
    ```
-6. Access the application at [http://localhost:8501](http://localhost:8501)
+5. Access the application at [http://localhost:8501](http://localhost:8501)
 
 The archived gold dataset (`data/gold/IberFire_coarse32_time1.zarr.tar.gz`) and the latest model (`models/resnet34_v9.pth`) are managed by Git LFS and will be downloaded automatically when you clone the repository. When you run `git lfs pull`, you make sure this download is finished before moving on.
 
