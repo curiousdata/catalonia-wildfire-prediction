@@ -1,5 +1,5 @@
 {
-  "zarr_path": "/Users/vladimir/catalonia-wildfire-prediction/data/gold/IberFire_coarse32_time1.zarr",
+  "zarr_path": "/Users/vladimir/catalonia-wildfire-prediction/data/gold/IberFire_coarse32.zarr",
   "label_var": "is_fire",
   "time_start": "2008-01-01",
   "time_end": "2022-12-31",

@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
         mlflow.log_param("model_name", model_name)
 
-        ZARR_PATH = project_root / "data" / "gold" / "IberFire_coarse32_time1.zarr"
+        ZARR_PATH = project_root / "data" / "gold" / "IberFire_coarse32.zarr"
 
         mlflow.log_param("zarr_path", str(ZARR_PATH))
         mlflow.log_param("coarsen_factor", 32)

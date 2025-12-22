@@ -9,7 +9,7 @@ import xarray as xr
 project_root = Path(__file__).resolve().parents[1]
 
 # Same Zarr + period as in train.py
-ZARR_PATH = project_root / "data" / "gold" / "IberFire_coarse32_time1.zarr"
+ZARR_PATH = project_root / "data" / "gold" / "IberFire_coarse32.zarr"
 LABEL_VAR = "is_fire"
 TRAIN_TIME_START = "2008-01-01"
 TRAIN_TIME_END = "2022-12-31"

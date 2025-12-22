@@ -70,7 +70,7 @@ catalonia-wildfire-prediction/
 - **Project root**: Scripts use `Path(__file__).resolve().parents[1]` to find project root
 - **Imports**: Add project root to `sys.path` for absolute imports: `from src.data.datasets import ...`
 - **Model naming**: Model files end with `.pth` extension
-- **Data paths**: Default Zarr data location is `data/gold/IberFire_coarse32_time1.zarr`
+- **Data paths**: Default Zarr data location is `data/gold/IberFire_coarse32.zarr`
 
 ### MLflow Integration
 - Use MLflow for experiment tracking in training scripts
