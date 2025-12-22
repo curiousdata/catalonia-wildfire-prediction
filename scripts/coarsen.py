@@ -14,11 +14,12 @@ parser.add_argument(
     default=32,
     help="Coarsening factor for spatial dimensions (default: 32)",
 )
+args = parser.parse_args()
 
 # Configuration
 OLD_ZARR = Path("data/silver/IberFire.zarr")
 OUT_DIR = Path("data/gold")
-COARSEN_FACTOR = 32
+COARSEN_FACTOR = args.factor
 
 NEW_ZARR = OUT_DIR / f"IberFire_coarse{COARSEN_FACTOR}.zarr"
 LABEL_VARS = ["is_fire"]
