@@ -5,22 +5,21 @@ This is a ONE-TIME conversion that may take a long time for a 730 GB dataset,
 but once done, Zarr will generally allow much faster and more flexible preprocessing.
 
 Usage:
-    python netcdf_to_zarr.py
+    python conversion.py
 """
 
 import xarray as xr
+import shutil
 import zarr
 import sys
 from pathlib import Path
 import time
 from datetime import datetime
-from numcodecs import Blosc  # NEW: import Blosc from numcodecs
+from numcodecs import Blosc  
 from dask.diagnostics import ProgressBar
 
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
+# Configuration
 
 # Input NetCDF file
 NETCDF_PATH = Path("data/bronze/IberFire.nc")
@@ -28,33 +27,27 @@ NETCDF_PATH = Path("data/bronze/IberFire.nc")
 # Output Zarr directory
 ZARR_PATH = Path("data/silver/IberFire.zarr")
 
-# Chunking strategy (balanced chunking for time + space access)
+# Chunking strategy (optimized for sequential time windows)
 CHUNKS = {
-    "time": 64,    # 64 time steps per chunk (good for sequential windows)
-    "y": 256,      # spatial tiling
-    "x": 256,
+    "time": 1,    
+    "y": -1,      
+    "x": -1,
 }
 
 # Compression settings
 COMPRESSOR = Blosc(
     cname="zstd",    # zstd: good compression + fast decompression
-    clevel=3,        # level 3: balance speed/compression (1-9)
+    clevel=3,        # level 3: balance speed/compression (change if you are limited by disk space, higher = smaller)
     shuffle=2        # bit-shuffle: better for floating point
 )
 
-# ============================================================================
-# MAIN CONVERSION
-# ============================================================================
-
 def main():
-    print("=" * 70)
-    print("NetCDF → Zarr Conversion")
-    print("=" * 70)
+    print("NetCDF -> Zarr Conversion")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     
     # Check input exists
     if not NETCDF_PATH.exists():
-        print(f"❌ ERROR: Input file not found: {NETCDF_PATH}")
+        print(f"ERROR: Input file not found: {NETCDF_PATH}")
         print(f"   Current directory: {Path.cwd()}")
         sys.exit(1)
     
@@ -66,11 +59,10 @@ def main():
     # Check if output already exists
     if ZARR_PATH.exists():
         response = input(f"⚠️  {ZARR_PATH} already exists. Overwrite? (yes/no): ")
-        if response.lower() != "yes":
+        if response.lower() not in ["yes", "y"]:
             print("Cancelled.")
             sys.exit(0)
         print(f"Removing existing {ZARR_PATH}...")
-        import shutil
         shutil.rmtree(ZARR_PATH)
     
     # Step 1: Open NetCDF
@@ -84,11 +76,11 @@ def main():
             decode_times=True,
         )
     except Exception as e:
-        print(f"❌ ERROR opening NetCDF: {e}")
+        print(f"ERROR opening NetCDF: {e}")
         sys.exit(1)
     
     elapsed = time.time() - start
-    print(f"  ✓ Opened in {elapsed:.1f}s")
+    print(f"  Opened in {elapsed:.1f}s")
     print(f"  Variables: {list(ds.data_vars)}")
     print(f"  Dimensions: {dict(ds.dims)}")
     print(f"  Size: {ds.nbytes / 1e9:.1f} GB\n")
@@ -98,7 +90,7 @@ def main():
     for var in ds.data_vars:
         if ds[var].dtype == "float64":
             ds[var] = ds[var].astype("float32")
-    print("  ✓ Downcasting complete\n")
+    print("Downcasting complete\n")
     
     # Step 2: Rechunk dataset
     print(f"Step 2/3: Rechunking with {CHUNKS}...")
@@ -107,11 +99,11 @@ def main():
     try:
         ds_rechunked = ds.chunk(CHUNKS)
     except Exception as e:
-        print(f"❌ ERROR rechunking: {e}")
+        print(f"ERROR rechunking: {e}")
         sys.exit(1)
     
     elapsed = time.time() - start
-    print(f"  ✓ Rechunked in {elapsed:.1f}s")
+    print(f"Rechunked in {elapsed:.1f}s")
     
     # Show chunk info for first variable
     first_var = list(ds.data_vars)[0]
@@ -142,17 +134,17 @@ def main():
                 consolidated=True,  # create consolidated metadata for faster opens
             )
     except Exception as e:
-        print(f"\n❌ ERROR writing Zarr: {e}")
+        print(f"\nERROR writing Zarr: {e}")
         sys.exit(1)
     
     elapsed = time.time() - start
-    print(f"\n  ✓ Written in {elapsed/60:.1f} minutes ({elapsed/3600:.2f} hours)")
+    print(f"\n  Written in {elapsed/60:.1f} minutes ({elapsed/3600:.2f} hours)")
     
     # Step 4: Verify output
     print("\nStep 4/4: Verifying output...")
     try:
         ds_zarr = xr.open_zarr(ZARR_PATH)
-        print(f"  ✓ Zarr opens successfully")
+        print(f"  Zarr opens successfully")
         print(f"  Variables: {list(ds_zarr.data_vars)}")
         print(f"  Dimensions: {dict(ds_zarr.dims)}")
         
@@ -161,12 +153,10 @@ def main():
         print(f"  Sample check ({var}): shape = {ds_zarr[var].shape}, dtype = {ds_zarr[var].dtype}")
         
     except Exception as e:
-        print(f"  ⚠️  Warning: Could not verify: {e}")
+        print(f"Warning: Could not verify: {e}")
     
     # Print final stats
-    print("\n" + "=" * 70)
-    print("✅ CONVERSION COMPLETE!")
-    print("=" * 70)
+    print("CONVERSION COMPLETE!")
     print(f"Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Size comparison
@@ -178,27 +168,16 @@ def main():
     print(f"\nSize comparison:")
     print(f"  NetCDF: {netcdf_size:.1f} GB")
     print(f"  Zarr:   {zarr_size:.1f} GB ({zarr_size/netcdf_size*100:.1f}% of original)")
-    
-    print(f"\nNext steps:")
-    print(f"  1. Update your preprocessing notebook Cell 2:")
-    print(f'     ds = xr.open_zarr("{ZARR_PATH}")')
-    print(f"  2. Rerun preprocessing (should be 5-10× faster)")
-    print(f"  3. Keep {NETCDF_PATH} as backup (can delete Zarr if needed)")
-    print("=" * 70)
-
-# ============================================================================
-# RUN
-# ============================================================================
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user. Zarr may be incomplete.")
-        print(f"   You can safely delete {ZARR_PATH} and restart.")
+        print("\n\nInterrupted by user. Zarr may be incomplete.")
+        print(f"You can safely delete {ZARR_PATH} and restart.")
         sys.exit(1)
     except Exception as e:
-        print(f"\n\n❌ UNEXPECTED ERROR: {e}")
+        print(f"\n\nUNEXPECTED ERROR: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
