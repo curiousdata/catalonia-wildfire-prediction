@@ -39,7 +39,7 @@ This section is divided into three parts based on your use case:
 
 ### Compute Requirements
 1. For just starting the application, there are none. There is a trained model already in the repo, and the amount of CPU work is minimal.
-2. If you chose the training mode - your training will be faster if you have a powerful machine. You might need 10-11 GB of RAM for effective data streaming. Fastest training will be on machines with Apple Silicon GPU.
+2. If you chose the training mode - your training will be faster if you have a powerful machine. You might need 10-11 GB of RAM for effective data streaming. Fastest training will be on machines with physical GPU like that of NVIDIA or Apple Silicon.
 3. For full experimentation mode with raw NetCDF dataset, it is preferrable that you have a powerful machine with a lot of CPU, GPU and RAM resource. Dataset's original creators recommend using a machine with at least 128 GB RAM. However, if for some reason you don't have the aforementioned machine, don't let that stop you - this project was successfully created using a single 2020 MacBook Air M1. 
 
 ### Storage Requirements
@@ -94,8 +94,8 @@ The archived gold dataset (`data/gold/IberFire_coarse32_time1.zarr.tar.gz`) and 
 If you want to train the U-Net model on the existing gold dataset:
 
 **Prerequisites:**
-- Python 3.13+
-- MPS-compatible GPU (recommended for training). CUDA support is planned.
+- Python 3.11+
+- Physical GPU with support of either CUDA or MPS drivers (recommended) 
 - The gold dataset (automatically available via Git LFS)
 
 **Steps:**
@@ -114,6 +114,7 @@ If you want to train the U-Net model on the existing gold dataset:
    ```bash
    python scripts/train.py --model_name resnet34_v10 --epochs 50
    ```
+   Ypu can get creative with the names, too.
 
 The training script uses the gold dataset (`data/gold/IberFire_coarse32_time1.zarr`) and logs all metrics to MLflow for experiment tracking.
 
@@ -159,7 +160,7 @@ If you want to experiment with the dataset, coarsening, feature engineering, etc
 
 The project includes scripts for processing the IberFire dataset:
 - `netcdf_to_zarr.py`: Convert NetCDF to Zarr format for efficient data access
-- `coarsen.py`: Reduce spatial resolution for faster experimentation
+- `coarsen.py`: Reduce spatial resolution for faster experimentation and less severe imbalance
 - `rechunk.py`: Optimize data chunking for processing
 
 ## Future Plans
@@ -169,7 +170,6 @@ We are actively working to improve wildfire prediction capabilities. Future dire
 - **Bigger Models**: Experimenting with larger U-Net architectures and more sophisticated encoders for improved prediction accuracy
 - **Finer Resolution**: Training models on higher spatial resolution data to capture more detailed fire risk patterns
 - **Real-Time Data Ingestion**: Implementing a pipeline for real-time data ingestion to predict fires for tomorrow based on current conditions
-- **CUDA support**: right now the training script automatically chooses *MPS* (Metal Performance Shaders, Apple Silicon's driver for GPU training) if it's available and CPU otherwise. In the future, CUDA will also be supported.
 
 If you're interested in contributing to any of these areas, please see the Contributing section below.
 
