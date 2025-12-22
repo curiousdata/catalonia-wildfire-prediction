@@ -1,3 +1,2 @@
 models/resnet34_v9.pth filter=lfs diff=lfs merge=lfs -text
-data/gold/IberFire_coarse32_time1.zarr filter=lfs diff=lfs merge=lfs -text
-data/gold/*.zarr.tar.gz filter=lfs diff=lfs merge=lfs -text
+data/gold/IberFire_coarse32.zarr.tar.gz filter=lfs diff=lfs merge=lfs -text
