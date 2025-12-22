@@ -4,8 +4,19 @@ from pathlib import Path
 import xarray as xr
 from dask.diagnostics import ProgressBar
 from numcodecs import Blosc
+import argparse
 
-OLD_ZARR = Path("data/silver/IberFire_time1_xyfull.zarr")
+# Collect arguments for coarsen factor
+parser = argparse.ArgumentParser(description="Coarsen Zarr dataset.")
+parser.add_argument(
+    "--factor",
+    type=int,
+    default=32,
+    help="Coarsening factor for spatial dimensions (default: 32)",
+)
+
+# Configuration
+OLD_ZARR = Path("data/silver/IberFire.zarr")
 OUT_DIR = Path("data/gold")
 COARSEN_FACTOR = 32
 

@@ -5,8 +5,11 @@ from torch.utils.data import Dataset
 from pathlib import Path
 import json
 from typing import List, Dict, Literal, Optional
+import logging
 
 import xarray as xr
+
+logger = logging.getLogger(__name__)
 
 
 # --- NumPy pooling helpers ---
@@ -45,9 +48,7 @@ def mean_pool_np(arr: np.ndarray, k: int) -> np.ndarray:
 
 class SimpleIberFireSegmentationDataset(Dataset):
     """
-    Minimal PyTorch Dataset for IberFire-style wildfire *segmentation* (heatmap output).
-
-    This is a simpler MVP version focused on:
+    PyTorch Dataset for IberFire-style wildfire *segmentation* (heatmap output) focused on:
       - Full-image inputs (no tile-level classification)
       - Pixel-wise fire mask as target (for U-Net / FCN-style models)
       - Optional lead time (e.g., predict fire at t+1 from features at t)
@@ -59,7 +60,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         time_end: End date (e.g., "2020-12-31")
         feature_vars: List of feature variable names
         label_var: Label variable name (e.g., "is_near_fire")
-        spatial_downsample: Spatial downsampling factor (e.g., 4 for 4x4 pooling)
+        spatial_downsample: Spatial downsampling factor (e.g., 4 for 4x4 pooling) (outdated, use coarsened Zarr instead)
         lead_time: Predict label at t+lead_time (0 = same day, 1 = tomorrow, etc.)
         stats: Optional dict with precomputed normalization stats
                {var_name: {"mean": float, "std": float}}
@@ -72,7 +73,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         ...     time_start="2018-01-01",
         ...     time_end="2020-12-31",
         ...     feature_vars=["wind_speed_mean", "t2m_mean", "RH_mean"],
-        ...     label_var="is_near_fire",
+        ...     label_var="is_fire",
         ...     spatial_downsample=1,
         ...     lead_time=1,  # predict tomorrow's fire heatmap
         ...     compute_stats=True,
@@ -117,7 +118,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             Path(day_indices_path) if day_indices_path is not None else None
         )
 
-        print(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
+        logger.info(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
         self.ds = xr.open_zarr(
             self.zarr_path,
             consolidated=True,
@@ -134,7 +135,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             time_vals = time_da.values
             self._years_all = np.array([int(str(v)[:4]) for v in time_vals], dtype=int)
 
-        print(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
+        logger.info(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
         time = self.ds["time"].values  # this is datetime64 already
         mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
         all_indices = np.where(mask)[0]
@@ -148,10 +149,10 @@ class SimpleIberFireSegmentationDataset(Dataset):
             raise ValueError("No valid time indices found for the given range and lead_time.")
 
         self.time_indices = all_indices
-        print(f"[SimpleDataset] Total usable time steps: {len(self.time_indices)}")
+        logger.info(f"[SimpleDataset] Total usable time steps: {len(self.time_indices)}")
         # Optionally adjust the list of time indices based on fire/no-fire day information
         self._apply_day_mode()
-        print(f"[SimpleDataset] Time steps after mode='{self.mode}': {len(self.time_indices)}")
+        logger.info(f"[SimpleDataset] Time steps after mode='{self.mode}': {len(self.time_indices)}")
 
         # Determine which variables are dynamic (have time dim),
         # which are simple static (no time dim),
@@ -220,19 +221,19 @@ class SimpleIberFireSegmentationDataset(Dataset):
                 f"and not recognized as CLC or popdens base."
             )
 
-        print(f"[SimpleDataset] Dynamic vars (time-dependent): {self.dynamic_vars}")
-        print(f"[SimpleDataset] Static vars (no time dimension, broadcast in time): {self.static_vars}")
+        logger.info(f"[SimpleDataset] Dynamic vars (time-dependent): {self.dynamic_vars}")
+        logger.info(f"[SimpleDataset] Static vars (no time dimension, broadcast in time): {self.static_vars}")
         if self.clc_base_vars:
-            print(f"[SimpleDataset] CLC base vars (year-aware static): {self.clc_base_vars}")
+            logger.info(f"[SimpleDataset] CLC base vars (year-aware static): {self.clc_base_vars}")
         if self.popdens_base_vars:
-            print(f"[SimpleDataset] popdens base vars (year-aware static): {self.popdens_base_vars}")
+            logger.info(f"[SimpleDataset] popdens base vars (year-aware static): {self.popdens_base_vars}")
 
         # Cache static variables in memory to avoid repeated disk reads
         self.static_cache: Dict[str, np.ndarray] = {}
         for v in self.static_vars:
             arr = self.root[v][:, :].astype("float32")
             self.static_cache[v] = arr
-            print(
+            logger.info(
                 f"[SimpleDataset] Cached static var '{v}' with shape {arr.shape} "
                 f"and dtype {arr.dtype}"
             )
@@ -244,7 +245,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             for year, varname in year_map.items():
                 arr = self.root[varname][:, :].astype("float32")
                 year_cache[year] = arr
-                print(
+                logger.info(
                     f"[SimpleDataset] Cached CLC var '{varname}' for base '{base_name}' "
                     f"with shape {arr.shape} and dtype {arr.dtype}"
                 )
@@ -257,7 +258,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             for year, varname in year_map.items():
                 arr = self.root[varname][:, :].astype("float32")
                 year_cache[year] = arr
-                print(
+                logger.info(
                     f"[SimpleDataset] Cached popdens var '{varname}' for base '{base_name}' "
                     f"with shape {arr.shape} and dtype {arr.dtype}"
                 )
@@ -265,7 +266,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
 
         # Load or compute normalization stats
         if stats is not None:
-            print("[SimpleDataset] Using provided normalization stats.")
+            logger.info("[SimpleDataset] Using provided normalization stats.")
             self.stats = stats
 
         elif compute_stats:
@@ -277,15 +278,15 @@ class SimpleIberFireSegmentationDataset(Dataset):
                     f"[SimpleDataset] Stats found at {self.stats_path}. Do you want to overwrite? [y/N]: "
                 ).strip().lower()
                 if resp not in ("y", "yes"):
-                    print(f"[SimpleDataset] Keeping existing stats from: {self.stats_path}")
+                    logger.info(f"[SimpleDataset] Keeping existing stats from: {self.stats_path}")
                     with open(self.stats_path) as f:
                         self.stats = json.load(f)
                     overwrite = False
                 else:
-                    print(f"[SimpleDataset] Overwriting stats at: {self.stats_path}")
+                    logger.info(f"[SimpleDataset] Overwriting stats at: {self.stats_path}")
 
             if overwrite:
-                print("[SimpleDataset] Computing normalization stats from data...")
+                logger.info("[SimpleDataset] Computing normalization stats from data...")
                 self.stats = self._compute_stats()
 
                 # If no explicit stats_path was provided, choose a sensible default:
@@ -297,12 +298,12 @@ class SimpleIberFireSegmentationDataset(Dataset):
                 self.save_stats(self.stats_path)
 
         elif self.stats_path is not None and self.stats_path.exists():
-            print(f"[SimpleDataset] Loading normalization stats from: {self.stats_path}")
+            logger.info(f"[SimpleDataset] Loading normalization stats from: {self.stats_path}")
             with open(self.stats_path) as f:
                 self.stats = json.load(f)
 
         else:
-            print("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
+            logger.info("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
             self.stats = {v: {"mean": 0.0, "std": 1.0} for v in self.feature_vars}
 
         # Cache aligned stats arrays for faster __getitem__
@@ -354,7 +355,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
                 std = 1.0
 
             stats[v] = {"mean": mean, "std": std}
-            print(f"[SimpleDataset] {v}: mean={mean:.4f}, std={std:.4f}")
+            logger.info(f"[SimpleDataset] {v}: mean={mean:.4f}, std={std:.4f}")
 
         return stats
 
@@ -374,7 +375,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
             return
 
         if not self.day_indices_path.exists():
-            print(
+            logger.info(
                 f"[SimpleDataset] Day index file not found at {self.day_indices_path}, "
                 f"mode='{self.mode}' will be ignored (using all time steps)."
             )
@@ -389,7 +390,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         no_fire_days_global = np.array(data.get("no_fire_days", []), dtype=int)
 
         if fire_days_global.size == 0 and self.mode in ("fire_only", "balanced_days"):
-            print(
+            logger.info(
                 "[SimpleDataset] No fire_days found in the index file; "
                 "mode will be ignored and all time steps will be used."
             )
@@ -539,7 +540,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         path_obj.parent.mkdir(parents=True, exist_ok=True)
         with open(path_obj, "w") as f:
             json.dump(self.stats, f, indent=2)
-        print(f"[SimpleDataset] Saved normalization stats to: {path_obj}")
+        logger.info(f"[SimpleDataset] Saved normalization stats to: {path_obj}")
 
     def get_time_value(self, idx: int) -> str:
         """Return the datetime string for a given sample index (for debugging)."""

@@ -19,6 +19,7 @@ import tqdm
 from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data import DataLoader
 import math
+import logging
 
 from src.data.datasets import SimpleIberFireSegmentationDataset
 
@@ -28,6 +29,9 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, required=True, help="Name of the model file inside models/")
     parser.add_argument("--epochs", type=int, required=True, help="Number of training epochs")
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    logger = logging.getLogger(__name__)
 
     model_name = args.model_name
     # Ensure we have a consistent local filename with .pth extension
@@ -367,11 +371,9 @@ if __name__ == "__main__":
         val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
         valb_pos, valb_pix, valb_ratio = compute_pos_ratio(val_balanced_loader)
 
-        print("=== SANITY CHECKS ===")
-        print(f"Train positives (all days): {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
-        print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
-        print(f"Val (balanced_days) positives: {valb_pos} out of {valb_pix} pixels (ratio={valb_ratio:.8f})")
-        print("======================")
+        logger.info(f"Train positives (all days): {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
+        logger.info(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
+        logger.info(f"Val (balanced_days) positives: {valb_pos} out of {valb_pix} pixels (ratio={valb_ratio:.8f})")
 
         if torch.cuda.is_available():
             device = torch.device("cuda")
@@ -427,19 +429,22 @@ if __name__ == "__main__":
             logit_adjustment, device=device, dtype=torch.float32
         )
 
-        base_bce = torch.nn.BCEWithLogitsLoss(reduction="mean")
-
-        def logit_adjusted_bce(logits, targets):
+        class LogitAdjustedBCE(torch.nn.Module):
             """
-            logits: [B, 1, H, W]
-            targets: [B, 1, H, W] in {0,1}
-            """
-            adjusted_logits = logits + logit_adjustment
-            return base_bce(adjusted_logits, targets)
+            BCEWithLogitsLoss with logit adjustment for class imbalance as per
+            Menon et al., 'Long-Tailed Classification via Logit Adjustment'"""
+            def __init__(self, logit_adjustment: torch.Tensor):
+                super().__init__()
+                self.register_buffer("logit_adjustment", logit_adjustment)
+                self.base_bce = torch.nn.BCEWithLogitsLoss(reduction="mean")
 
-        criterion = logit_adjusted_bce
+            def forward(self, logits, targets):
+                adjusted_logits = logits + self.logit_adjustment
+                return self.base_bce(adjusted_logits, targets)
 
-        mlflow.log_param("criterion", "LogitAdjustedBCEWithLogits")
+        criterion = LogitAdjustedBCE(logit_adjustment=logit_adjustment)
+
+        mlflow.log_param("criterion", "LogitAdjustedBCE")
         mlflow.log_param("pi_pos", float(pi_pos))
         mlflow.log_param("pi_neg", float(pi_neg))
         mlflow.log_param("logit_adjustment", float(logit_adjustment.item()))
@@ -452,11 +457,11 @@ if __name__ == "__main__":
         checkpoint_path = project_root / "models" / model_file_name
 
         if checkpoint_path.exists():
-            print(f"Loading existing model from {checkpoint_path}")
+            logger.info(f"Loading existing model from {checkpoint_path}")
             state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
             model.load_state_dict(state_dict)
         else:
-            print(f"No model found at {checkpoint_path}. Initializing new model.")
+            logger.info(f"No model found at {checkpoint_path}. Initializing new model.")
             os.makedirs(checkpoint_path.parent, exist_ok=True)
 
         # Curriculum switch parameter
@@ -582,6 +587,6 @@ if __name__ == "__main__":
         total_duration = time.time() - overall_start
         epochs_ran = (epoch + 1) if "epoch" in locals() else 0
         avg_time = total_duration / epochs_ran if epochs_ran > 0 else 0.0
-        print(f"Total training time: {total_duration:.2f} seconds")
-        print(f"Average time per epoch: {avg_time:.2f} seconds over {epochs_ran} epochs")
-        print(f"Model saved to {checkpoint_path}")
+        logger.info(f"Total training time: {total_duration:.2f} seconds")
+        logger.info(f"Average time per epoch: {avg_time:.2f} seconds over {epochs_ran} epochs")
+        logger.info(f"Model saved to {checkpoint_path}")
