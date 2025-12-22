@@ -19,6 +19,7 @@ import tqdm
 from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data import DataLoader
 import math
+import logging
 
 from src.data.datasets import SimpleIberFireSegmentationDataset
 
@@ -28,6 +29,9 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, required=True, help="Name of the model file inside models/")
     parser.add_argument("--epochs", type=int, required=True, help="Number of training epochs")
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    logger = logging.getLogger(__name__)
 
     model_name = args.model_name
     # Ensure we have a consistent local filename with .pth extension
@@ -367,11 +371,9 @@ if __name__ == "__main__":
         val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
         valb_pos, valb_pix, valb_ratio = compute_pos_ratio(val_balanced_loader)
 
-        print("=== SANITY CHECKS ===")
-        print(f"Train positives (all days): {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
-        print(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
-        print(f"Val (balanced_days) positives: {valb_pos} out of {valb_pix} pixels (ratio={valb_ratio:.8f})")
-        print("======================")
+        logger.info(f"Train positives (all days): {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
+        logger.info(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
+        logger.info(f"Val (balanced_days) positives: {valb_pos} out of {valb_pix} pixels (ratio={valb_ratio:.8f})")
 
         if torch.cuda.is_available():
             device = torch.device("cuda")
