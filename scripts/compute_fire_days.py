@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 
 project_root = Path(__file__).resolve().parents[1]
-ZARR_PATH = project_root / "data" / "silver" / "IberFire_time1_xyfull.zarr"
+ZARR_PATH = project_root / "data" / "silver" / "IberFire.zarr"
 OUT_PATH = project_root / "stats" / "fire_day_indices.json"
 
 LABEL_NAME = "is_fire"
