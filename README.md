@@ -118,7 +118,7 @@ If you want to train the U-Net model on the existing gold dataset:
    ```
    You can get creative with the names, too.
 
-The training script uses the gold dataset (`data/gold/IberFire_coarse32_time1.zarr`) and logs all metrics to MLflow for experiment tracking.
+The training script uses the gold dataset (`data/gold/IberFire_coarse32.zarr`) and logs all metrics to MLflow for experiment tracking.
 
 ---
 
