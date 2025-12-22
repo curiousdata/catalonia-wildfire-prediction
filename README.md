@@ -21,8 +21,8 @@ catalonia-wildfire-prediction/
 ├── notebooks/                   # Jupyter notebooks for EDA and experiments
 ├── scripts/                     # Training and data processing scripts
 │   ├── train.py                 # U-Net model training
-│   ├── netcdf_to_zarr.py       # Data format conversion
-│   └── coarsen.py              # Spatial resolution adjustment
+│   ├── conversion.py            # Data format conversion
+│   └── coarsen.py               # Spatial resolution adjustment
 ├── src/                         # Core modules
 │   ├── data/                    # Dataset classes
 │   └── models/                  # Model architectures
@@ -99,8 +99,10 @@ If you want to train the U-Net model on the existing gold dataset:
 - The gold dataset (automatically available via Git LFS)
 
 **Steps:**
-1. **Install dependencies:**
+1. **Create virtual environment and install dependencies:**
    ```bash
+   python -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
 
@@ -114,7 +116,7 @@ If you want to train the U-Net model on the existing gold dataset:
    ```bash
    python scripts/train.py --model_name resnet34_v10 --epochs 50
    ```
-   Ypu can get creative with the names, too.
+   You can get creative with the names, too.
 
 The training script uses the gold dataset (`data/gold/IberFire_coarse32_time1.zarr`) and logs all metrics to MLflow for experiment tracking.
 
@@ -125,7 +127,7 @@ The training script uses the gold dataset (`data/gold/IberFire_coarse32_time1.za
 If you want to experiment with the dataset, coarsening, feature engineering, etc.:
 
 **Prerequisites:**
-- Python 3.13+
+- Python 3.11+
 - Significant disk space (~20-50 GB for raw NetCDF data)
 - Computer connected to power (overnight processing recommended)
 
@@ -137,20 +139,23 @@ If you want to experiment with the dataset, coarsening, feature engineering, etc
 
 2. **Convert NetCDF to Zarr format:**
    ```bash
-   python scripts/netcdf_to_zarr.py
+   python scripts/conversion.py
    ```
    **Note:** This conversion is best done overnight with your computer connected to power. In the future, this dataset will be published in Zarr format directly.
 
 3. **Customize chunking and compression (optional):**
-   You are free to change the chunking and compression settings in the scripts. To match the access pattern used in this project (1 image at a time fed into U-Net):
+   The **conversion script** already converts the dataset with chunks optimized for access pattern of this project (1 image at a time fed into U-Net). You are free to change the chunking and compression settings with this helper script:
    ```bash
    python scripts/rechunk.py
    ```
+   Don't forget to actually change the values to the ones you need.
 
 4. **Apply coarsening and max pooling to the target:**
    ```bash
    python scripts/coarsen.py
    ```
+   That will create a coarser version of dataset and save it in data/gold. 
+   Coarser versions are faster to train and have improved class balance (target feature if max-pooled).
 
 5. After processing, follow **Part 2** to train your models with the new dataset configurations.
 
@@ -159,9 +164,9 @@ If you want to experiment with the dataset, coarsening, feature engineering, etc
 ## Data Processing
 
 The project includes scripts for processing the IberFire dataset:
-- `netcdf_to_zarr.py`: Convert NetCDF to Zarr format for efficient data access
+- `conversion.py`: Convert NetCDF to Zarr format for efficient data access
 - `coarsen.py`: Reduce spatial resolution for faster experimentation and less severe imbalance
-- `rechunk.py`: Optimize data chunking for processing
+- `rechunk.py`: Change data chunking 
 
 ## Future Plans
 
