@@ -429,19 +429,22 @@ if __name__ == "__main__":
             logit_adjustment, device=device, dtype=torch.float32
         )
 
-        base_bce = torch.nn.BCEWithLogitsLoss(reduction="mean")
-
-        def logit_adjusted_bce(logits, targets):
+        class LogitAdjustedBCE(torch.nn.Module):
             """
-            logits: [B, 1, H, W]
-            targets: [B, 1, H, W] in {0,1}
-            """
-            adjusted_logits = logits + logit_adjustment
-            return base_bce(adjusted_logits, targets)
+            BCEWithLogitsLoss with logit adjustment for class imbalance as per
+            Menon et al., 'Long-Tailed Classification via Logit Adjustment'"""
+            def __init__(self, logit_adjustment: torch.Tensor):
+                super().__init__()
+                self.register_buffer("logit_adjustment", logit_adjustment)
+                self.base_bce = torch.nn.BCEWithLogitsLoss(reduction="mean")
 
-        criterion = logit_adjusted_bce
+            def forward(self, logits, targets):
+                adjusted_logits = logits + self.logit_adjustment
+                return self.base_bce(adjusted_logits, targets)
 
-        mlflow.log_param("criterion", "LogitAdjustedBCEWithLogits")
+        criterion = LogitAdjustedBCE(logit_adjustment=logit_adjustment)
+
+        mlflow.log_param("criterion", "LogitAdjustedBCE")
         mlflow.log_param("pi_pos", float(pi_pos))
         mlflow.log_param("pi_neg", float(pi_neg))
         mlflow.log_param("logit_adjustment", float(logit_adjustment.item()))
