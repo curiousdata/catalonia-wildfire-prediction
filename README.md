@@ -152,10 +152,15 @@ If you want to experiment with the dataset, coarsening, feature engineering, etc
 
 4. **Apply coarsening and max pooling to the target:**
    ```bash
+   # Use default coarsening factor of 32
    python scripts/coarsen.py
+   
+   # Or specify a custom coarsening factor
+   python scripts/coarsen.py --factor 16
    ```
    That will create a coarser version of dataset and save it in data/gold. 
    Coarser versions are faster to train and have improved class balance (target feature is max-pooled).
+   The `--factor` argument controls the spatial coarsening factor (default: 32).
 
 5. After processing, follow **Part 2** to train your models with the new dataset configurations.
 
@@ -165,7 +170,7 @@ If you want to experiment with the dataset, coarsening, feature engineering, etc
 
 The project includes scripts for processing the IberFire dataset:
 - `conversion.py`: Convert NetCDF to Zarr format for efficient data access
-- `coarsen.py`: Reduce spatial resolution for faster experimentation and less severe imbalance
+- `coarsen.py`: Reduce spatial resolution for faster experimentation and less severe imbalance (supports `--factor` argument to customize coarsening)
 - `rechunk.py`: Change data chunking 
 
 ## Future Plans
