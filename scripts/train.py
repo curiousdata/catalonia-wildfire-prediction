@@ -454,11 +454,11 @@ if __name__ == "__main__":
         checkpoint_path = project_root / "models" / model_file_name
 
         if checkpoint_path.exists():
-            print(f"Loading existing model from {checkpoint_path}")
+            logger.info(f"Loading existing model from {checkpoint_path}")
             state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
             model.load_state_dict(state_dict)
         else:
-            print(f"No model found at {checkpoint_path}. Initializing new model.")
+            logger.info(f"No model found at {checkpoint_path}. Initializing new model.")
             os.makedirs(checkpoint_path.parent, exist_ok=True)
 
         # Curriculum switch parameter
@@ -584,6 +584,6 @@ if __name__ == "__main__":
         total_duration = time.time() - overall_start
         epochs_ran = (epoch + 1) if "epoch" in locals() else 0
         avg_time = total_duration / epochs_ran if epochs_ran > 0 else 0.0
-        print(f"Total training time: {total_duration:.2f} seconds")
-        print(f"Average time per epoch: {avg_time:.2f} seconds over {epochs_ran} epochs")
-        print(f"Model saved to {checkpoint_path}")
+        logger.info(f"Total training time: {total_duration:.2f} seconds")
+        logger.info(f"Average time per epoch: {avg_time:.2f} seconds over {epochs_ran} epochs")
+        logger.info(f"Model saved to {checkpoint_path}")
