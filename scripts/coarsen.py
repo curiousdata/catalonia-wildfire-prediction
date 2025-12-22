@@ -20,7 +20,7 @@ OLD_ZARR = Path("data/silver/IberFire.zarr")
 OUT_DIR = Path("data/gold")
 COARSEN_FACTOR = 32
 
-NEW_ZARR = OUT_DIR / f"IberFire_coarse{COARSEN_FACTOR}_time1.zarr"
+NEW_ZARR = OUT_DIR / f"IberFire_coarse{COARSEN_FACTOR}.zarr"
 LABEL_VARS = ["is_fire"]
 
 COMPRESSOR = Blosc(cname="zstd", clevel=3, shuffle=2)
