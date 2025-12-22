@@ -4,7 +4,7 @@ from pathlib import Path
 import xarray as xr
 from dask.diagnostics import ProgressBar
 from numcodecs import Blosc
-import argparse 
+import argparse
 
 # Collect arguments for coarsen factor
 parser = argparse.ArgumentParser(description="Coarsen Zarr dataset.")
