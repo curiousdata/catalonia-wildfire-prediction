@@ -155,7 +155,7 @@ If you want to experiment with the dataset, coarsening, feature engineering, etc
    python scripts/coarsen.py
    ```
    That will create a coarser version of dataset and save it in data/gold. 
-   Coarser versions are faster to train and have improved class balance (target feature if max-pooled).
+   Coarser versions are faster to train and have improved class balance (target feature is max-pooled).
 
 5. After processing, follow **Part 2** to train your models with the new dataset configurations.
 
