@@ -29,6 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, required=True, help="Name of the model file inside models/")
     parser.add_argument("--epochs", type=int, required=True, help="Number of training epochs")
     parser.add_argument("--encoder_name", type=str, default="resnet34", help="Encoder architecture to use")
+    parser.add_argument("-lr", "--learning_rate", type=float, default=3e-5, help="Learning rate for optimizer")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -195,8 +196,8 @@ if __name__ == "__main__":
         in_channels = len(feature_vars)
 
         # Model / optimizer hyperparameters
-        encoder_name = args.encoder_name  # e.g., "resnet34"
-        lr = 3e-5
+        encoder_name = args.encoder_name  # e.g., "resnet34" 
+        lr = args.learning_rate
         weight_decay = 2e-3
         decoder_dropout = 0.10  # try 0.20 next if still overfitting
 
