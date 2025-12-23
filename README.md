@@ -114,9 +114,18 @@ If you want to train the U-Net model on the existing gold dataset:
 
 3. **Train the model:**
    ```bash
-   python scripts/train.py --model_name resnet34_v10 --epochs 50
+   python scripts/train.py --model_name 'my_model' --epochs 50
    ```
    You can get creative with the names, too.
+
+   You can also change the model's backbone from the default *resnet34* by passing `--encoder_name` parameter like so:
+   ```bash
+   python scripts/train.py --model_name 'my_model' --epochs 50 --encoder_name 'resnet50'
+   ```
+   This uses SMP's model registry. See the full list of available encoders [here](https://smp.readthedocs.io/en/latest/encoders.html)
+
+   If you want to change the default learning rate of *3e-5*, use `-lr` or `--learning_rate` argument.
+
 
 The training script uses the gold dataset (`data/gold/IberFire_coarse32.zarr`) and logs all metrics to MLflow for experiment tracking.
 
