@@ -220,7 +220,7 @@ if __name__ == "__main__":
             label_var="is_fire",
             spatial_downsample=spatial_downsample,
             lead_time=lead_time,
-            compute_stats=True,
+            compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
             mode="balanced_days",
             day_indices_path=FIRE_DAY_INDICES_PATH,
@@ -288,33 +288,6 @@ if __name__ == "__main__":
             pin_memory=False,
         )
 
-        # validation dataset: balanced_days (useful to see signal without overwhelming negatives)
-        val_balanced_ds = SimpleIberFireSegmentationDataset(
-            zarr_path=ZARR_PATH,
-            time_start=val_time_start,
-            time_end=val_time_end,
-            feature_vars=feature_vars,
-            label_var="is_fire",
-            spatial_downsample=spatial_downsample,
-            lead_time=lead_time,
-            compute_stats=False,
-            stats_path=TRAIN_STATS_PATH,
-            mode="balanced_days",
-            day_indices_path=FIRE_DAY_INDICES_PATH,
-            balanced_ratio=1.0,
-        )
-
-        val_balanced_loader = DataLoader(
-            val_balanced_ds,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=0,
-            pin_memory=False,
-        )
-
-        # ==========================
-        # Sanity checks: positive ratios
-        # ==========================
         def compute_pos_ratio(loader):
             total_pos = 0
             total_pixels = 0
@@ -370,12 +343,8 @@ if __name__ == "__main__":
 
         # Compute priors from all-days loader (for logit adjustment)
         train_pos, train_pix, train_ratio = compute_pos_ratio(train_all_loader)
-        val_pos, val_pix, val_ratio = compute_pos_ratio(test_loader)
-        valb_pos, valb_pix, valb_ratio = compute_pos_ratio(val_balanced_loader)
 
         logger.info(f"Train positives (all days): {train_pos} out of {train_pix} pixels (ratio={train_ratio:.8f})")
-        logger.info(f"Val positives:   {val_pos} out of {val_pix} pixels (ratio={val_ratio:.8f})")
-        logger.info(f"Val (balanced_days) positives: {valb_pos} out of {valb_pix} pixels (ratio={valb_ratio:.8f})")
 
         if torch.cuda.is_available():
             device = torch.device("cuda")
@@ -450,10 +419,7 @@ if __name__ == "__main__":
         mlflow.log_param("pi_pos", float(pi_pos))
         mlflow.log_param("pi_neg", float(pi_neg))
         mlflow.log_param("logit_adjustment", float(logit_adjustment.item()))
-        mlflow.log_param("uses_pos_weight", False)
         mlflow.log_param("train_pos_ratio", float(train_ratio))
-        mlflow.log_param("val_pos_ratio", float(val_ratio))
-        mlflow.log_param("val_balanced_pos_ratio", float(valb_ratio))
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         checkpoint_path = project_root / "models" / model_file_name
@@ -488,8 +454,6 @@ if __name__ == "__main__":
             else:
                 active_loader = train_all_loader  # all days
                 train_mode = "all"
-
-            mlflow.log_param(f"epoch_{epoch+1}_train_mode", train_mode)
 
             pbar = tqdm.tqdm(
                 active_loader,
@@ -528,13 +492,6 @@ if __name__ == "__main__":
                     device=device,
                     desc="Validation (all)",
                 )
-                val_bal_loss, val_bal_roc, val_bal_pr = evaluate_loader(
-                    model=model,
-                    criterion=criterion,
-                    loader=val_balanced_loader,
-                    device=device,
-                    desc="Validation (balanced_days)",
-                )
 
             mlflow.log_metric(
                 "val_all_logit_adjusted_bce_per_pixel",
@@ -543,14 +500,6 @@ if __name__ == "__main__":
             )
             mlflow.log_metric("val_all_roc_auc", val_all_roc, step=epoch + 1)
             mlflow.log_metric("val_all_pr_auc", val_all_pr, step=epoch + 1)
-
-            mlflow.log_metric(
-                "val_balanced_logit_adjusted_bce_per_pixel",
-                val_bal_loss,
-                step=epoch + 1,
-            )
-            mlflow.log_metric("val_balanced_roc_auc", val_bal_roc, step=epoch + 1)
-            mlflow.log_metric("val_balanced_pr_auc", val_bal_pr, step=epoch + 1)
 
             # Track best checkpoint by val_all_pr_auc and early stop when it stops improving
             if np.isfinite(val_all_pr) and (val_all_pr > best_val_all_pr_auc + 1e-6):
@@ -572,9 +521,6 @@ if __name__ == "__main__":
         # Always restore best model (by val_all_pr_auc) after training
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
-
-        # Best checkpoint already saved during training; avoid overwriting with last-epoch weights.
-        # torch.save(model.state_dict(), checkpoint_path)
 
         # Move model to CPU for MLflow logging and signature inference
         model_cpu = model.to("cpu").eval()
