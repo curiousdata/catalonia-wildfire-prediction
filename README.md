@@ -34,8 +34,8 @@ catalonia-wildfire-prediction/
 
 This section is divided into three parts based on your use case:
 1. **Running the Application** - For all users who just want to try the wildfire prediction app
-2. **Training the Model** - For ML practitioners who want to train the model on the existing dataset
-3. **Full Experimentation** - For advanced devs and ML engineers who want to experiment with data processing, feature engineering, and model architecture
+2. **Training the Model (beta)** - For ML practitioners who want to train the model on the existing dataset
+3. **Full Experimentation (beta)** - For advanced devs and ML engineers who want to experiment with data processing, feature engineering, and model architecture
 
 ### Compute Requirements
 1. For just starting the application, there are none. There is a trained model already in the repo, and the amount of CPU work is minimal.
@@ -89,7 +89,8 @@ The archived gold dataset (`data/gold/IberFire_coarse32.zarr.tar.gz`) and the la
 
 ---
 
-### Part 2: Training the Model
+### Part 2: Training the Model (beta)
+Note: this is still under development, so expect less smooth experience. Proceed with caution.
 
 If you want to train the U-Net model on the existing gold dataset:
 
@@ -131,7 +132,8 @@ The training script uses the gold dataset (`data/gold/IberFire_coarse32.zarr`) a
 
 ---
 
-### Part 3: Full Experimentation
+### Part 3: Full Experimentation (beta)
+Note: this is still under development, so expect less smooth experience. Proceed with caution.
 
 If you want to experiment with the dataset, coarsening, feature engineering, etc.:
 
