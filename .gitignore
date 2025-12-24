@@ -48,3 +48,4 @@ models/resnet34_v8.pth
 *.parquet
 *.csv
 *.npz
+models/resnet50_v1.pth
