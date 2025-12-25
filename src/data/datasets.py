@@ -46,7 +46,7 @@ def mean_pool_np(arr: np.ndarray, k: int) -> np.ndarray:
     pooled = arr_reshaped.mean(axis=(1, 3))
     return pooled
 
-class SimpleIberFireSegmentationDataset(Dataset):
+class BaseIberFireDataset(Dataset):
     """
     PyTorch Dataset for IberFire-style wildfire *segmentation* (heatmap output) focused on:
       - Full-image inputs (no tile-level classification)
@@ -68,7 +68,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         stats_path: Optional path to load/save normalization stats JSON.
 
     Usage (typical for U-Net MVP):
-        >>> dataset = SimpleIberFireSegmentationDataset(
+        >>> dataset = BaseIberFireDataset(
         ...     zarr_path="data/processed/IberFire.zarr",
         ...     time_start="2018-01-01",
         ...     time_end="2020-12-31",
@@ -105,7 +105,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         self.lead_time = lead_time
         if self.downsample != 1:
             raise ValueError(
-                "SimpleIberFireSegmentationDataset expects spatial_downsample=1 "
+                "BaseIberFireDataset expects spatial_downsample=1 "
                 "when using the coarsened Zarr. Further pooling should be handled "
                 "in a separate dataset variant."
             )

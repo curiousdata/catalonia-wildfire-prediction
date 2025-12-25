@@ -26,7 +26,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover
     Resampling = None
 import segmentation_models_pytorch as smp
 
-from src.data.datasets import SimpleIberFireSegmentationDataset
+from src.data.datasets import BaseIberFireDataset
 
 
 @dataclass(frozen=True)
@@ -137,8 +137,8 @@ FEATURE_VARS: List[str] = [
 
 
 @st.cache_resource(show_spinner=False)
-def load_dataset(cfg: Cfg) -> SimpleIberFireSegmentationDataset:
-    return SimpleIberFireSegmentationDataset(
+def load_dataset(cfg: Cfg) -> BaseIberFireDataset:
+    return BaseIberFireDataset(
         zarr_path=Path(cfg.zarr_path),
         time_start=cfg.time_start,
         time_end=cfg.time_end,
@@ -206,11 +206,11 @@ def load_model(cfg: Cfg) -> torch.nn.Module:
     return m
 
 
-def list_available_dates(ds: SimpleIberFireSegmentationDataset) -> List[str]:
+def list_available_dates(ds: BaseIberFireDataset) -> List[str]:
     return [str(ds.get_time_value(i))[:10] for i in range(len(ds))]
 
 
-def find_index_by_date(ds: SimpleIberFireSegmentationDataset, date_str: str) -> int:
+def find_index_by_date(ds: BaseIberFireDataset, date_str: str) -> int:
     for i in range(len(ds)):
         if str(ds.get_time_value(i))[:10] == date_str:
             return i
@@ -293,7 +293,7 @@ def rgba_to_png_bytes(rgba: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
-def compute_source_bounds_xy(ds: SimpleIberFireSegmentationDataset) -> tuple[float, float, float, float]:
+def compute_source_bounds_xy(ds: BaseIberFireDataset) -> tuple[float, float, float, float]:
     """Return (xmin, ymin, xmax, ymax) in the dataset's native CRS units."""
     xr_ds = ds.ds
     y = np.asarray(xr_ds["y"].values)
@@ -302,7 +302,7 @@ def compute_source_bounds_xy(ds: SimpleIberFireSegmentationDataset) -> tuple[flo
     ymin, ymax = float(np.min(y)), float(np.max(y))
     return xmin, ymin, xmax, ymax
 
-def compute_bounds(ds: SimpleIberFireSegmentationDataset, cfg: Cfg) -> List[List[float]]:
+def compute_bounds(ds: BaseIberFireDataset, cfg: Cfg) -> List[List[float]]:
     """Return Folium-compatible bounds [[lat_min, lon_min], [lat_max, lon_max]]."""
     xr_ds = ds.ds
     y = np.asarray(xr_ds["y"].values)
@@ -332,7 +332,7 @@ def compute_bounds(ds: SimpleIberFireSegmentationDataset, cfg: Cfg) -> List[List
 def reproject_raster_to_wgs84(
     arr: np.ndarray,
     *,
-    ds: SimpleIberFireSegmentationDataset,
+    ds: BaseIberFireDataset,
     cfg: Cfg,
     resampling: str = "bilinear",
 ) -> tuple[np.ndarray, list[list[float]]]:

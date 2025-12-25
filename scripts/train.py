@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 import math
 import logging
 
-from src.data.datasets import SimpleIberFireSegmentationDataset
+from src.data.datasets import BaseIberFireDataset
 
 
 if __name__ == "__main__":
@@ -212,7 +212,7 @@ if __name__ == "__main__":
 
         TRAIN_STATS_PATH = project_root / "stats" / "simple_iberfire_stats_train.json"
         FIRE_DAY_INDICES_PATH = project_root / "stats" / "fire_day_indices.json"
-        train_ds = SimpleIberFireSegmentationDataset(
+        train_ds = BaseIberFireDataset(
             zarr_path=ZARR_PATH,
             time_start=train_time_start,
             time_end=train_time_end,
@@ -236,7 +236,7 @@ if __name__ == "__main__":
         )
 
         # All-days training dataset and loader for curriculum
-        train_all_ds = SimpleIberFireSegmentationDataset(
+        train_all_ds = BaseIberFireDataset(
             zarr_path=ZARR_PATH,
             time_start=train_time_start,
             time_end=train_time_end,
@@ -266,7 +266,7 @@ if __name__ == "__main__":
         assert sample_X.shape[1:] == sample_y.shape[1:], "Input and output spatial dimensions do not match"
 
         # test dataset
-        test_ds = SimpleIberFireSegmentationDataset(
+        test_ds = BaseIberFireDataset(
             zarr_path=ZARR_PATH,
             time_start=val_time_start,
             time_end=val_time_end,

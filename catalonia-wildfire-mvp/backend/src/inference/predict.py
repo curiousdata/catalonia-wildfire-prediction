@@ -47,7 +47,7 @@ def _parse_feature_vars(s: str) -> List[str]:
 def _get_segmentation_dataset() -> Any:
     """Create the training-time dataset object inside the backend.
 
-    We rely on SimpleIberFireSegmentationDataset to reproduce *exactly* the
+    We rely on BaseIberFireDataset to reproduce *exactly* the
     feature resolution + normalization + NaN handling + lead_time shifting logic
     used during training.
 
@@ -64,10 +64,10 @@ def _get_segmentation_dataset() -> Any:
 
     # Import training dataset implementation (mounted into the container)
     try:
-        from data.datasets import SimpleIberFireSegmentationDataset  # type: ignore
+        from data.datasets import BaseIberFireDataset  # type: ignore
     except ImportError as e:
         raise ImportError(
-            "Failed to import `SimpleIberFireSegmentationDataset` from `data.datasets`. "
+            "Failed to import `BaseIberFireDataset` from `data.datasets`. "
             "Ensure docker-compose mounts ../src as `/workspace/train_src:ro`, sets PYTHONPATH "
             "to include `/workspace/train_src`, and that the `data` package under that path "
             "contains the expected `datasets` module."
@@ -96,7 +96,7 @@ def _get_segmentation_dataset() -> Any:
     # Many dataset implementations accept additional knobs; keep a conservative set.
     # If your datasets.py signature differs, this will raise a helpful error at startup.
     try:
-        ds = SimpleIberFireSegmentationDataset(
+        ds = BaseIberFireDataset(
             zarr_path=zarr_path,
             time_start=time_start,
             time_end=time_end,
@@ -114,7 +114,7 @@ def _get_segmentation_dataset() -> Any:
             f"Falling back to minimal required arguments."
         )
         # Fallback for older signatures (minimal required args)
-        ds = SimpleIberFireSegmentationDataset(
+        ds = BaseIberFireDataset(
             zarr_path=zarr_path,
             time_start=time_start,
             time_end=time_end,
