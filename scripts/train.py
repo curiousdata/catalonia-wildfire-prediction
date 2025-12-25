@@ -57,14 +57,12 @@ if __name__ == "__main__":
         train_time_end = "2022-12-31"
         val_time_start = "2023-01-01"
         val_time_end = "2024-12-31"
-        spatial_downsample = 1
         lead_time = 1
         batch_size = 1
         mlflow.log_param("train_time_start", train_time_start)
         mlflow.log_param("train_time_end", train_time_end)
         mlflow.log_param("val_time_start", val_time_start)
         mlflow.log_param("val_time_end", val_time_end)
-        mlflow.log_param("spatial_downsample", spatial_downsample)
         mlflow.log_param("lead_time", lead_time)
         mlflow.log_param("batch_size", batch_size)
 
@@ -218,7 +216,6 @@ if __name__ == "__main__":
             time_end=train_time_end,
             feature_vars=feature_vars,
             label_var="is_fire",
-            spatial_downsample=spatial_downsample,
             lead_time=lead_time,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
@@ -242,7 +239,6 @@ if __name__ == "__main__":
             time_end=train_time_end,
             feature_vars=feature_vars,
             label_var="is_fire",
-            spatial_downsample=spatial_downsample,
             lead_time=lead_time,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,
@@ -272,7 +268,6 @@ if __name__ == "__main__":
             time_end=val_time_end,
             feature_vars=feature_vars,
             label_var="is_fire",
-            spatial_downsample=spatial_downsample,
             lead_time=lead_time,
             compute_stats=False,
             stats_path=TRAIN_STATS_PATH,

@@ -11,41 +11,6 @@ import xarray as xr
 
 logger = logging.getLogger(__name__)
 
-
-# --- NumPy pooling helpers ---
-def max_pool_np(arr: np.ndarray, k: int) -> np.ndarray:
-    """
-    Block max pooling for a 2D array with factor k.
-    If k <= 1, returns the input array unchanged.
-    """
-    if k <= 1:
-        return arr
-    H, W = arr.shape
-    Hk, Wk = H // k, W // k
-    if Hk == 0 or Wk == 0:
-        return arr
-    arr_trim = arr[: Hk * k, : Wk * k]
-    arr_reshaped = arr_trim.reshape(Hk, k, Wk, k)
-    pooled = arr_reshaped.max(axis=(1, 3))
-    return pooled
-
-
-def mean_pool_np(arr: np.ndarray, k: int) -> np.ndarray:
-    """
-    Block mean pooling for a 2D array with factor k.
-    If k <= 1, returns the input array unchanged.
-    """
-    if k <= 1:
-        return arr
-    H, W = arr.shape
-    Hk, Wk = H // k, W // k
-    if Hk == 0 or Wk == 0:
-        return arr
-    arr_trim = arr[: Hk * k, : Wk * k]
-    arr_reshaped = arr_trim.reshape(Hk, k, Wk, k)
-    pooled = arr_reshaped.mean(axis=(1, 3))
-    return pooled
-
 class BaseIberFireDataset(Dataset):
     """
     PyTorch Dataset for IberFire-style wildfire *segmentation* (heatmap output) focused on:
@@ -60,7 +25,6 @@ class BaseIberFireDataset(Dataset):
         time_end: End date (e.g., "2020-12-31")
         feature_vars: List of feature variable names
         label_var: Label variable name (e.g., "is_near_fire")
-        spatial_downsample: Spatial downsampling factor (e.g., 4 for 4x4 pooling) (outdated, use coarsened Zarr instead)
         lead_time: Predict label at t+lead_time (0 = same day, 1 = tomorrow, etc.)
         stats: Optional dict with precomputed normalization stats
                {var_name: {"mean": float, "std": float}}
@@ -74,7 +38,6 @@ class BaseIberFireDataset(Dataset):
         ...     time_end="2020-12-31",
         ...     feature_vars=["wind_speed_mean", "t2m_mean", "RH_mean"],
         ...     label_var="is_fire",
-        ...     spatial_downsample=1,
         ...     lead_time=1,  # predict tomorrow's fire heatmap
         ...     compute_stats=True,
         ... )
@@ -87,7 +50,6 @@ class BaseIberFireDataset(Dataset):
         time_end: str,
         feature_vars: List[str],
         label_var: str,
-        spatial_downsample: int = 1,
         lead_time: int = 1,
         stats: Optional[Dict[str, Dict[str, float]]] = None,
         compute_stats: bool = False,
@@ -101,14 +63,7 @@ class BaseIberFireDataset(Dataset):
         self.zarr_path = Path(zarr_path)
         self.feature_vars = feature_vars
         self.label_var = label_var
-        self.downsample = spatial_downsample
         self.lead_time = lead_time
-        if self.downsample != 1:
-            raise ValueError(
-                "BaseIberFireDataset expects spatial_downsample=1 "
-                "when using the coarsened Zarr. Further pooling should be handled "
-                "in a separate dataset variant."
-            )
         self.mode = mode
         self.balanced_ratio = balanced_ratio
         self.seed = seed

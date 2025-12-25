@@ -144,7 +144,6 @@ def load_dataset(cfg: Cfg) -> BaseIberFireDataset:
         time_end=cfg.time_end,
         feature_vars=FEATURE_VARS,
         label_var=cfg.label_var,
-        spatial_downsample=1,
         lead_time=cfg.lead_time,
         compute_stats=False,
         stats_path=Path(cfg.stats_path),
