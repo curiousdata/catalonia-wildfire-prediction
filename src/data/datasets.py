@@ -73,7 +73,7 @@ class BaseIberFireDataset(Dataset):
             Path(day_indices_path) if day_indices_path is not None else None
         )
 
-        logger.info(f"[SimpleDataset] Opening Zarr dataset: {self.zarr_path}")
+        logger.info(f" Opening Zarr dataset: {self.zarr_path}")
         self.ds = xr.open_zarr(
             self.zarr_path,
             consolidated=True,
@@ -90,7 +90,7 @@ class BaseIberFireDataset(Dataset):
             time_vals = time_da.values
             self._years_all = np.array([int(str(v)[:4]) for v in time_vals], dtype=int)
 
-        logger.info(f"[SimpleDataset] Filtering time range: {time_start} to {time_end}")
+        logger.info(f" Filtering time range: {time_start} to {time_end}")
         time = self.ds["time"].values  # this is datetime64 already
         mask = (time >= np.datetime64(time_start)) & (time <= np.datetime64(time_end))
         all_indices = np.where(mask)[0]
@@ -104,10 +104,10 @@ class BaseIberFireDataset(Dataset):
             raise ValueError("No valid time indices found for the given range and lead_time.")
 
         self.time_indices = all_indices
-        logger.info(f"[SimpleDataset] Total usable time steps: {len(self.time_indices)}")
+        logger.info(f" Total usable time steps: {len(self.time_indices)}")
         # Optionally adjust the list of time indices based on fire/no-fire day information
         self._apply_day_mode()
-        logger.info(f"[SimpleDataset] Time steps after mode='{self.mode}': {len(self.time_indices)}")
+        logger.info(f" Time steps after mode='{self.mode}': {len(self.time_indices)}")
 
         # Determine which variables are dynamic (have time dim),
         # which are simple static (no time dim),
@@ -141,7 +141,7 @@ class BaseIberFireDataset(Dataset):
                         year_map[year] = candidate
                 if not year_map:
                     raise KeyError(
-                        f"[SimpleDataset] CLC base feature '{v}' could not be resolved "
+                        f" CLC base feature '{v}' could not be resolved "
                         f"to any of CLC_2006_{base_suffix}, CLC_2012_{base_suffix}, CLC_2018_{base_suffix}."
                     )
                 self.clc_base_vars.append(v)
@@ -163,7 +163,7 @@ class BaseIberFireDataset(Dataset):
                         year_map[year] = name
                 if not year_map:
                     raise KeyError(
-                        "[SimpleDataset] popdens base feature requested, "
+                        " popdens base feature requested, "
                         "but no popdens_YYYY variables found in dataset."
                     )
                 self.popdens_base_vars.append(v)
@@ -172,16 +172,16 @@ class BaseIberFireDataset(Dataset):
 
             # Case 4: unknown feature name
             raise KeyError(
-                f"[SimpleDataset] Feature '{v}' not found in dataset variables "
+                f" Feature '{v}' not found in dataset variables "
                 f"and not recognized as CLC or popdens base."
             )
 
-        logger.info(f"[SimpleDataset] Dynamic vars (time-dependent): {self.dynamic_vars}")
-        logger.info(f"[SimpleDataset] Static vars (no time dimension, broadcast in time): {self.static_vars}")
+        logger.info(f" Dynamic vars (time-dependent): {self.dynamic_vars}")
+        logger.info(f" Static vars (no time dimension, broadcast in time): {self.static_vars}")
         if self.clc_base_vars:
-            logger.info(f"[SimpleDataset] CLC base vars (year-aware static): {self.clc_base_vars}")
+            logger.info(f" CLC base vars (year-aware static): {self.clc_base_vars}")
         if self.popdens_base_vars:
-            logger.info(f"[SimpleDataset] popdens base vars (year-aware static): {self.popdens_base_vars}")
+            logger.info(f" popdens base vars (year-aware static): {self.popdens_base_vars}")
 
         # Cache static variables in memory to avoid repeated disk reads
         self.static_cache: Dict[str, np.ndarray] = {}
@@ -189,7 +189,7 @@ class BaseIberFireDataset(Dataset):
             arr = self.root[v][:, :].astype("float32")
             self.static_cache[v] = arr
             logger.info(
-                f"[SimpleDataset] Cached static var '{v}' with shape {arr.shape} "
+                f" Cached static var '{v}' with shape {arr.shape} "
                 f"and dtype {arr.dtype}"
             )
 
@@ -201,7 +201,7 @@ class BaseIberFireDataset(Dataset):
                 arr = self.root[varname][:, :].astype("float32")
                 year_cache[year] = arr
                 logger.info(
-                    f"[SimpleDataset] Cached CLC var '{varname}' for base '{base_name}' "
+                    f" Cached CLC var '{varname}' for base '{base_name}' "
                     f"with shape {arr.shape} and dtype {arr.dtype}"
                 )
             self.clc_cache[base_name] = year_cache
@@ -214,14 +214,14 @@ class BaseIberFireDataset(Dataset):
                 arr = self.root[varname][:, :].astype("float32")
                 year_cache[year] = arr
                 logger.info(
-                    f"[SimpleDataset] Cached popdens var '{varname}' for base '{base_name}' "
+                    f" Cached popdens var '{varname}' for base '{base_name}' "
                     f"with shape {arr.shape} and dtype {arr.dtype}"
                 )
             self.popdens_cache[base_name] = year_cache
 
         # Load or compute normalization stats
         if stats is not None:
-            logger.info("[SimpleDataset] Using provided normalization stats.")
+            logger.info(" Using provided normalization stats.")
             self.stats = stats
 
         elif compute_stats:
@@ -230,18 +230,18 @@ class BaseIberFireDataset(Dataset):
             # If a stats file already exists, ask whether to overwrite or reuse it
             if self.stats_path is not None and self.stats_path.exists():
                 resp = input(
-                    f"[SimpleDataset] Stats found at {self.stats_path}. Do you want to overwrite? [y/N]: "
+                    f" Stats found at {self.stats_path}. Do you want to overwrite? [y/N]: "
                 ).strip().lower()
                 if resp not in ("y", "yes"):
-                    logger.info(f"[SimpleDataset] Keeping existing stats from: {self.stats_path}")
+                    logger.info(f" Keeping existing stats from: {self.stats_path}")
                     with open(self.stats_path) as f:
                         self.stats = json.load(f)
                     overwrite = False
                 else:
-                    logger.info(f"[SimpleDataset] Overwriting stats at: {self.stats_path}")
+                    logger.info(f" Overwriting stats at: {self.stats_path}")
 
             if overwrite:
-                logger.info("[SimpleDataset] Computing normalization stats from data...")
+                logger.info(" Computing normalization stats from data...")
                 self.stats = self._compute_stats()
 
                 # If no explicit stats_path was provided, choose a sensible default:
@@ -253,12 +253,12 @@ class BaseIberFireDataset(Dataset):
                 self.save_stats(self.stats_path)
 
         elif self.stats_path is not None and self.stats_path.exists():
-            logger.info(f"[SimpleDataset] Loading normalization stats from: {self.stats_path}")
+            logger.info(f" Loading normalization stats from: {self.stats_path}")
             with open(self.stats_path) as f:
                 self.stats = json.load(f)
 
         else:
-            logger.info("[SimpleDataset] No stats provided, using mean=0, std=1 for all vars.")
+            logger.info(" No stats provided, using mean=0, std=1 for all vars.")
             self.stats = {v: {"mean": 0.0, "std": 1.0} for v in self.feature_vars}
 
         # Cache aligned stats arrays for faster __getitem__
@@ -299,7 +299,7 @@ class BaseIberFireDataset(Dataset):
                     data_list.append(arr.ravel())
             else:
                 raise KeyError(
-                    f"[SimpleDataset] Variable '{v}' not classified as dynamic, static, CLC base, or popdens base."
+                    f" Variable '{v}' not classified as dynamic, static, CLC base, or popdens base."
                 )
 
             data = np.concatenate(data_list)
@@ -310,7 +310,7 @@ class BaseIberFireDataset(Dataset):
                 std = 1.0
 
             stats[v] = {"mean": mean, "std": std}
-            logger.info(f"[SimpleDataset] {v}: mean={mean:.4f}, std={std:.4f}")
+            logger.info(f" {v}: mean={mean:.4f}, std={std:.4f}")
 
         return stats
 
@@ -331,7 +331,7 @@ class BaseIberFireDataset(Dataset):
 
         if not self.day_indices_path.exists():
             logger.info(
-                f"[SimpleDataset] Day index file not found at {self.day_indices_path}, "
+                f" Day index file not found at {self.day_indices_path}, "
                 f"mode='{self.mode}' will be ignored (using all time steps)."
             )
             return
@@ -346,7 +346,7 @@ class BaseIberFireDataset(Dataset):
 
         if fire_days_global.size == 0 and self.mode in ("fire_only", "balanced_days"):
             logger.info(
-                "[SimpleDataset] No fire_days found in the index file; "
+                " No fire_days found in the index file; "
                 "mode will be ignored and all time steps will be used."
             )
             return
@@ -455,7 +455,7 @@ class BaseIberFireDataset(Dataset):
                 arr = year_cache[chosen_year]
             else:
                 raise KeyError(
-                    f"[SimpleDataset] Feature '{v}' not found among dynamic, static, CLC base, or popdens base variables."
+                    f" Feature '{v}' not found among dynamic, static, CLC base, or popdens base variables."
                 )
 
             mean = float(self._means[i])
@@ -468,7 +468,7 @@ class BaseIberFireDataset(Dataset):
             if not np.isfinite(arr).all():
                 if self.nan_policy == "error":
                     raise ValueError(
-                        f"[SimpleDataset] Non-finite values found in feature '{v}' "
+                        f" Non-finite values found in feature '{v}' "
                         f"at t={t} (idx={idx})."
                     )
                 fill_value = 0.0 if self.nan_policy == "zero" else mean
@@ -495,7 +495,7 @@ class BaseIberFireDataset(Dataset):
         path_obj.parent.mkdir(parents=True, exist_ok=True)
         with open(path_obj, "w") as f:
             json.dump(self.stats, f, indent=2)
-        logger.info(f"[SimpleDataset] Saved normalization stats to: {path_obj}")
+        logger.info(f" Saved normalization stats to: {path_obj}")
 
     def get_time_value(self, idx: int) -> str:
         """Return the datetime string for a given sample index (for debugging)."""
