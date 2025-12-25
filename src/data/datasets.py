@@ -547,3 +547,7 @@ class SimpleIberFireSegmentationDataset(Dataset):
         t = self.time_indices[idx]
         time_value = self.ds["time"].values[t]
         return str(time_value)
+    
+class NewDataset(Dataset):
+    def __init__(self):
+        pass
