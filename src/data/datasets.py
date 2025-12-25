@@ -503,6 +503,10 @@ class BaseIberFireDataset(Dataset):
         time_value = self.ds["time"].values[t]
         return str(time_value)
     
-class NewDataset(Dataset):
+class StackedIberFireDataset(Dataset):
     def __init__(self):
+        # TODO: this is a placeholder for the new dataset with improved functionality
+        # that will inherit from BaseIberFireDataset and add new features: temporal stacking
+        # of days before fire (day sequence input), OR-conditioned target masks for several days
+        # (if there is a fire in any of the next N days) and more.
         pass
